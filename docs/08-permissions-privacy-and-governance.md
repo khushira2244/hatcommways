@@ -1056,13 +1056,41 @@ requires explicit authorized approval.
 
 # 49. External Tool Permissions
 
-Tools may eventually include:
+Hatcommways distinguishes two tool classes.
+
+## Internal Hatcommways Tools
+
+Examples:
+
+- get_project
+- get_task_graph
+- get_open_responsibilities
+- get_actor_capacity
+- get_current_timeline
+- propose_replanning
+
+These call governed Hatcommways domain services. They do not require AgentCore Gateway merely because they are agent tools.
+
+## External Tools
+
+Examples include:
 
 - email
 - calendar
-- maps
-- notifications
-- organization connectors
+- organization APIs
+- external scheduling systems
+- future partner integrations
+
+These are routed through Amazon Bedrock AgentCore Identity and AgentCore Gateway where adopted.
+
+Conceptually:
+
+Strands Agent
+→ Hatcommways Agent Permission Check
+→ Hatcommways User / Organization Authorization Check
+→ AgentCore Identity
+→ AgentCore Gateway
+→ External Tool / API
 
 Each tool call should enforce:
 
@@ -1072,6 +1100,71 @@ Each tool call should enforce:
 - tool-specific scope
 
 Agent access to a tool does not automatically grant access to all data within that tool.
+
+Core principle:
+
+> Internal authorization is owned by Hatcommways.
+> Delegated external access is mediated through AgentCore Identity and Gateway.
+
+AgentCore Identity helps establish:
+
+- which agent/workload is making the request
+- which user or organization delegated access
+- which external system is being accessed
+- what credential/authorization scope is available
+
+Possession of an external credential is not project authorization.
+
+Conceptually:
+
+Hatcommways Permission
++
+Delegated External Identity
+=
+Eligible External Action
+
+Both are required where applicable.
+
+Strands agents must not receive raw third-party credentials in prompts, memory, or unrestricted tool context, including:
+
+- OAuth tokens
+- API secrets
+- calendar credentials
+- email credentials
+- organization API keys
+
+Credential handling remains inside the governed identity/integration layer. Agents receive capabilities, not raw secrets.
+
+AgentCore Gateway exposes only selected external capabilities. An agent should see only the tools it requires.
+
+Examples:
+
+Scheduling Agent may receive:
+
+- get_available_calendar_slots
+- propose_calendar_event
+- create_calendar_event where pre-authorized
+
+Organization Coordination Agent may receive:
+
+- send_approved_email
+- read_relevant_reply
+- request_meeting
+
+Permission is evaluated at the tool/action level. Tool availability is part of agent least privilege.
+
+External access may occur on behalf of a participant, project owner, organization representative, or company representative. Delegation must be explicit and scoped. Organization membership alone does not imply authority to delegate company email, calendar, or external-system access.
+
+Some external actions may run autonomously only when a human has explicitly granted bounded permission beforehand. Consequential external actions still require explicit human approval, including:
+
+- contacting a new sponsor with a commitment request
+- committing an organization
+- accepting a contractual or financial obligation
+- sending a sensitive public statement
+- scheduling an event that participants have not authorized
+- changing another person's external calendar without prior authorization
+
+External access revocation must stop future agent access, expire cached authorization appropriately, and prevent pending unsafe actions. The affected agent may continue reasoning from Hatcommways project state without the revoked external capability.
 
 ---
 
@@ -1488,6 +1581,39 @@ Examples:
 
 Audit events should be immutable where practical.
 
+Every consequential external tool operation should record at minimum:
+
+- project id
+- initiating agent
+- initiating user/organization where applicable
+- requested external capability
+- authorization result
+- tool/action
+- timestamp
+- correlation id
+- success/failure state
+
+Raw secrets must not be persisted in audit logs.
+
+Hatcommways uses AgentCore Observability for infrastructure-level visibility into Strands agent runs, model activity, tool invocations, Gateway operations, errors, latency, and execution paths. This complements, but does not replace, Hatcommways audit records.
+
+Core principle:
+
+> Observability explains how execution occurred.
+> Audit explains what product authority/state changed.
+
+Correlation identifiers should propagate across:
+
+Domain Event
+→ Agent Orchestrator
+→ Strands Agent Run
+→ AgentCore Gateway Tool Call
+→ External System
+→ Result
+→ Domain Event
+
+Observability data must not become a secondary source of sensitive-data leakage. Trace attributes should prefer identifiers and safe metadata and must not unnecessarily contain OAuth tokens, payment instructions, private contact credentials, exact sensitive personal data, or full private message bodies.
+
 ---
 
 # 73. Audit Actor
@@ -1864,6 +1990,30 @@ Revoked authority must stop future consequential actions.
 
 Consequential agent proposals must be checked against current state and authority before application.
 
+## Invariant 13
+
+Agents never receive raw external credentials when governed capability access can be used instead.
+
+## Invariant 14
+
+AgentCore Identity does not replace Hatcommways project authorization.
+
+## Invariant 15
+
+AgentCore Gateway tool availability must follow least privilege.
+
+## Invariant 16
+
+External delegated access must be scoped to the user/organization authority that granted it.
+
+## Invariant 17
+
+AgentCore Observability does not replace application-level audit history.
+
+## Invariant 18
+
+Trace data must not expose sensitive secrets or private project information unnecessarily.
+
 ---
 
 # 92. Core Authorization Model
@@ -1893,6 +2043,24 @@ DENY
 REQUIRE HUMAN APPROVAL
 
 This decision should be deterministic and auditable.
+
+For governed external actions:
+
+Hatcommways Authorization
++
+Human / Organization Delegation
++
+Agent Tool Permission
++
+AgentCore Identity
++
+AgentCore Gateway
+
+→
+
+EXTERNAL ACTION ALLOWED / DENIED
+
+No single layer independently grants complete authority.
 
 ---
 

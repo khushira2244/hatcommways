@@ -482,6 +482,31 @@ ParallelizationAgentContext:
 
 Do not pass unnecessary project data.
 
+The context builder should produce two distinct context categories.
+
+## Reasoning Context
+
+Examples:
+
+- tasks
+- dependencies
+- responsibilities
+- timeline
+- blockers
+- approved memory
+
+## Capability Context
+
+Examples:
+
+- which internal tools are enabled
+- which external tools are available
+- delegated identity references
+- approval state
+- capability restrictions
+
+Do not place secrets in either context. External capability availability is resolved at runtime and may change when delegated access is revoked or expires.
+
 ---
 
 # 20. Context Construction Pipeline
@@ -583,6 +608,112 @@ Not:
 update_task_dependency_directly(...)
 
 The proposal is validated by deterministic services.
+
+## Internal Hatcommways Tools
+
+Internal tools provide access to Hatcommways execution state.
+
+Examples:
+
+- get_project_context
+- get_task_graph
+- get_dependencies
+- get_actor_capacity
+- get_open_responsibilities
+- get_current_timeline
+- get_blockers
+- retrieve_project_memory
+- retrieve_similar_blueprints
+- propose_replan
+
+Execution path:
+
+Strands Agent
+→ Hatcommways Tool Router
+→ Hatcommways Authorization / Agent Permission Check
+→ Domain Service
+→ Structured Result
+
+Internal tools remain inside the Hatcommways trust boundary and do not require AgentCore Gateway merely because agents use them.
+
+## External Tools
+
+External tools interact with third-party systems such as calendars, email, meeting systems, organization APIs, external scheduling systems, and future partner integrations.
+
+Execution path:
+
+Strands Agent
+→ Hatcommways Tool Permission Check
+→ Hatcommways User / Organization Authorization
+→ AgentCore Identity
+→ AgentCore Gateway
+→ External Tool / API
+→ Result
+
+Core principle:
+
+> Strands chooses among the tools it has been permitted to use.
+> Hatcommways decides whether that capability is actually authorized.
+> AgentCore governs the external identity and execution boundary.
+
+Every agent definition should explicitly declare its allowed internal and external tools. Agents must not dynamically acquire unrestricted tools.
+
+Strands agent prompts, memory, context, and normal tool arguments must not contain raw OAuth tokens, refresh tokens, API secrets, email credentials, calendar credentials, or organization integration secrets. Agents receive a capability, not the credential implementing that capability.
+
+When an external tool is requested, the runtime should know:
+
+- agent identity
+- agent version
+- agent run id
+- project id
+- initiating user
+- represented organization where applicable
+- delegated identity reference
+- requested capability
+- authorization scope
+- correlation id
+
+Before external access, Hatcommways checks:
+
+1. Is this agent permitted to use this tool type?
+2. Is the action relevant to this project?
+3. Is the initiating user authorized?
+4. If acting for an organization, is representative authority valid?
+5. Does the human delegation cover this action?
+6. Does the action require fresh human approval?
+7. Is the request based on current project state?
+
+Only after these pass should external execution continue.
+
+Conceptually, `ExternalToolRequest` contains:
+
+- request_id
+- project_id
+- agent_id
+- agent_run_id
+- tool_name
+- action
+- delegated_identity_reference
+- input
+- source_state_version
+- correlation_id
+
+It must not contain secrets.
+
+Conceptually, `ExternalToolResult` contains:
+
+- request_id
+- tool_name
+- status
+- external_resource_reference
+- safe_result
+- occurred_at
+- correlation_id
+- error_code if failed
+
+The result returns only information necessary for Hatcommways. External system state does not replace Hatcommways truth.
+
+AgentCore Gateway capabilities should be task-oriented and narrow. Prefer `create_project_calendar_event(project_id, event_id, approved_time)` over unrestricted calendar mutation or arbitrary HTTP access.
 
 ---
 
@@ -1089,7 +1220,7 @@ AgentCore Memory should never become the only record of:
 
 # 51. AgentCore Gateway
 
-AgentCore Gateway may later expose controlled tools such as:
+AgentCore Gateway exposes selected external operations as governed capabilities such as:
 
 - calendar
 - email
@@ -1098,11 +1229,13 @@ AgentCore Gateway may later expose controlled tools such as:
 
 This fits Hatcommways because agents should use governed tool boundaries instead of raw credentials.
 
+It does not replace Hatcommways' internal tool router. Internal domain tools remain inside Hatcommways.
+
 ---
 
 # 52. AgentCore Identity
 
-AgentCore Identity may help manage delegated credentials and external access.
+AgentCore Identity manages delegated credentials and governed external access where adopted.
 
 Example:
 
@@ -1112,11 +1245,38 @@ This can complement Hatcommways application authorization.
 
 It does not replace Hatcommways' project permission model.
 
+Tool availability must be resolved dynamically for each run. If delegated access is revoked or expires, the integration layer rejects the call. The agent may continue internal reasoning, propose a manual alternative, request renewed access, or surface a human decision. The entire project must not fail.
+
 ---
 
 # 53. AgentCore Observability
 
-AgentCore Observability may provide production agent tracing.
+Hatcommways uses AgentCore Observability for agent-infrastructure tracing across:
+
+Domain Event
+→ Hatcommways Orchestrator
+→ Agent Context Build
+→ Strands Agent Run
+→ Model Call
+→ Tool Selection
+→ Internal Tool or Gateway Tool
+→ Structured Output
+→ Validation
+→ Domain Result
+
+The following identifiers should be propagated where possible:
+
+- correlation_id
+- causation_id
+- project_id
+- agent_run_id
+- agent_id
+- source_event_id
+- state_version
+
+Each concurrent agent run has its own run id and independent trace while sharing the parent correlation. Retries should preserve prior attempts, and stale-result rejection should show the source and current versions.
+
+External-tool traces should contain safe metadata such as agent id, tool name, operation type, latency, success/failure, and correlation id. They must not include secrets.
 
 Hatcommways should still preserve its own:
 
@@ -1126,6 +1286,8 @@ Hatcommways should still preserve its own:
 - agent-run metadata
 
 Infrastructure traces and product audit are different layers.
+
+Runtime traces answer which model or tool ran, how long it took, and where it failed. Product audit answers who approved an action and what became authoritative.
 
 ---
 
@@ -1292,10 +1454,12 @@ agents/
 runtime/
   executor
   context_builder
-  tool_router
+  internal_tool_router
+  external_tool_router
   output_validator
   retry_policy
   run_state
+  stale_state_checker
   observability
 
 orchestration/
@@ -1312,13 +1476,13 @@ memory/
   blueprint_memory
 
 tools/
-  project
-  task_graph
-  actors
-  timeline
-  support
-  organization
-  events
+  internal
+  external
+
+integrations/
+  agentcore_identity
+  agentcore_gateway
+  external_capabilities
 
 The final code layout may differ, but these boundaries should remain recognizable.
 
@@ -1527,6 +1691,38 @@ Repeated no-progress reasoning is bounded.
 
 Optional AgentCore services complement rather than redefine Hatcommways architecture.
 
+## Invariant 11
+
+Internal Hatcommways tools and external third-party tools remain separate capability classes.
+
+## Invariant 12
+
+Agents never receive raw third-party credentials.
+
+## Invariant 13
+
+External tool access requires both Hatcommways authorization and valid delegated external identity where applicable.
+
+## Invariant 14
+
+AgentCore Gateway does not grant project authority by itself.
+
+## Invariant 15
+
+External tool availability is resolved dynamically and can be revoked.
+
+## Invariant 16
+
+AgentCore Observability traces runtime execution but does not replace product audit.
+
+## Invariant 17
+
+Sensitive data must not be inserted unnecessarily into traces.
+
+## Invariant 18
+
+External system state never silently replaces Hatcommways authoritative domain state.
+
 ---
 
 # 71. Core Runtime Flow
@@ -1590,6 +1786,33 @@ Domain Service Applies Change
 New Domain Event
 
 This is the core Hatcommways agent execution loop.
+
+For internal reasoning:
+
+Domain Event
+→ Trigger Router
+→ Context Builder
+→ Strands Agent
+→ Hatcommways Internal Tool
+→ Structured Proposal
+→ Validation
+→ Domain Service
+
+For external action:
+
+Domain Event / Approved Human Action
+→ Trigger Router
+→ Strands Agent
+→ External Tool Request
+→ Hatcommways Permission Check
+→ Delegation Check
+→ AgentCore Identity
+→ AgentCore Gateway
+→ External System
+→ Safe Result
+→ Hatcommways Audit / State Update
+
+Across both paths, AgentCore Observability, Hatcommways Application Observability, and Hatcommways Product Audit provide complementary visibility.
 
 ---
 

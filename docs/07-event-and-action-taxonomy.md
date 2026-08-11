@@ -1655,7 +1655,184 @@ These are operational, not public project events.
 
 ---
 
-# 88. Agent Trigger Matrix
+# 88. External Tool and AgentCore Operational Events
+
+External tool events describe the lifecycle of governed third-party capability execution requested by a Strands agent.
+
+Core events:
+
+- external_tool.requested
+- external_tool.authorized
+- external_tool.denied
+- external_tool.started
+- external_tool.completed
+- external_tool.failed
+- external_tool.cancelled
+
+## external_tool.requested
+
+Meaning:
+
+A Strands agent requested use of an external capability. This does not mean the action is authorized or executed.
+
+Payload may include:
+
+- request_id
+- project_id
+- agent_id
+- agent_run_id
+- tool_name
+- action
+- delegated_identity_reference
+- source_event_id
+- source_state_version
+- correlation_id
+
+Sensitive credentials must never be included.
+
+## external_tool.authorized
+
+Meaning:
+
+Hatcommways authorization and required delegated identity checks succeeded. The request is eligible to continue to AgentCore Gateway.
+
+Authorization may include:
+
+- agent tool permission
+- project permission
+- user delegation
+- organization authority
+- current-state validation
+- approval state
+
+## external_tool.denied
+
+Meaning:
+
+The requested external capability was not authorized.
+
+Possible reasons include an unauthorized agent, insufficient participant or representative authority, missing/revoked delegation, missing human approval, changed project state, or unavailable capability. The event should contain a safe reason code without exposing sensitive security details.
+
+## external_tool.started
+
+Meaning:
+
+The authorized external operation began through AgentCore Gateway or the governed external integration layer. This is operational state, not domain truth.
+
+## external_tool.completed
+
+Meaning:
+
+The external operation completed successfully.
+
+Payload may include:
+
+- request_id
+- tool_name
+- safe result reference
+- external resource reference
+- occurred_at
+- correlation_id
+
+A successful external operation does not automatically mean Hatcommways domain state changed. Relevant domain services must process the result.
+
+## external_tool.failed
+
+Meaning:
+
+The external operation failed because of conditions such as provider unavailability, expired delegated access, Gateway failure, external API rejection, timeout, or tool validation failure.
+
+Potential reactions include bounded retry, human decision, manual fallback, or continuing unaffected project branches. External-tool failure must not automatically stop the project.
+
+## external_tool.cancelled
+
+Meaning:
+
+A pending or in-progress external operation was intentionally cancelled because of human cancellation, changed project state, staleness, pause, or project cancellation.
+
+## External Identity Events
+
+Core events:
+
+- external_identity.connected
+- external_identity.updated
+- external_identity.revoked
+- external_identity.expired
+
+These events describe delegated external-access availability and never expose credentials.
+
+`external_identity.connected` means a participant or authorized organization representative established delegated access. Tool availability must still be checked at runtime.
+
+`external_identity.revoked` means delegated access was revoked. Future capabilities must be removed, cached authorization invalidated, and pending unsafe operations stopped. The project continues.
+
+`external_identity.expired` is handled similarly for future calls and may surface a reconnection request.
+
+## Gateway Events
+
+Optional internal operational events:
+
+- gateway.request_started
+- gateway.request_completed
+- gateway.request_failed
+
+These support observability, debugging, retries, and latency analysis. They do not normally appear in public or project feeds.
+
+## Trace Correlation Event
+
+`agent_trace.correlated` means a Hatcommways domain/action record has been associated with an agent/runtime trace.
+
+Possible payload:
+
+- project_id
+- source_event_id
+- agent_run_id
+- correlation_id
+- trace_reference
+
+It must not contain raw model reasoning or sensitive tool data.
+
+## Updated Agent Run Metadata
+
+Agent-run events may include:
+
+- correlation_id
+- trace_reference
+- external_tool_count
+- gateway_call_count
+
+## External Action Flow
+
+Agent decides an external capability may be useful
+→ external_tool.requested
+→ Hatcommways authorization
+→ external_tool.denied
+
+or, if approved:
+
+external_tool.authorized
+→ AgentCore Identity
+→ AgentCore Gateway
+→ external_tool.started
+→ External System
+→ external_tool.completed / external_tool.failed
+→ Hatcommways Domain Service
+→ relevant domain event
+
+The external-tool event and product-domain event remain separate.
+
+External tool and AgentCore events are system-internal by default. Users should see meaningful product outcomes rather than raw Gateway or runtime events.
+
+## Operational vs Domain Events
+
+Operational events such as `agent_run.started`, `external_tool.started`, `gateway.request_failed`, and `agent_trace.correlated` explain how the system executed.
+
+Domain events such as `responsibility.accepted`, `task.completed`, `scheduled_event.scheduled`, `organization.joined_project`, and `timeline.recalculated` describe Hatcommways product reality.
+
+Operational events must not be mistaken for domain state.
+
+---
+
+# 89. Agent Trigger Matrix
 
 Initial high-level mapping:
 
@@ -1867,7 +2044,7 @@ Triggers:
 
 ---
 
-# 89. Events That Should Stay Deterministic
+# 90. Events That Should Stay Deterministic
 
 These should generally be produced from deterministic services rather than LLM reasoning:
 
@@ -1888,7 +2065,7 @@ They should not invent these facts.
 
 ---
 
-# 90. Agent Proposal Events
+# 91. Agent Proposal Events
 
 When an agent proposes something but has not changed system truth, use proposal semantics.
 
@@ -1909,7 +2086,7 @@ when an agent merely suggested a task that has not been accepted/persisted.
 
 ---
 
-# 91. Human Approval Events
+# 92. Human Approval Events
 
 Potential lifecycle:
 
@@ -1928,7 +2105,7 @@ Approval payload should identify:
 
 ---
 
-# 92. Public vs Internal Events
+# 93. Public vs Internal Events
 
 Events should have visibility.
 
@@ -1955,7 +2132,7 @@ Do not expose internal orchestration events directly in public feeds.
 
 ---
 
-# 93. Event Replay
+# 94. Event Replay
 
 Because execution history is event-driven, the architecture should eventually support replay where practical.
 
@@ -1970,7 +2147,7 @@ However, current transactional state remains authoritative for normal runtime re
 
 ---
 
-# 94. Duplicate Event Handling
+# 95. Duplicate Event Handling
 
 Every event should have stable event id.
 
@@ -1992,7 +2169,7 @@ Idempotency is mandatory.
 
 ---
 
-# 95. Event Ordering
+# 96. Event Ordering
 
 Events may arrive close together.
 
@@ -2018,7 +2195,7 @@ Version checks prevent stale application.
 
 ---
 
-# 96. Concurrency Example
+# 97. Concurrency Example
 
 Current state:
 
@@ -2047,7 +2224,7 @@ The system should allow these reactions to converge safely through state version
 
 ---
 
-# 97. Event Fan-Out
+# 98. Event Fan-Out
 
 One event may produce many reactions.
 
@@ -2071,7 +2248,7 @@ Do not serialize all consumers unnecessarily.
 
 ---
 
-# 98. Event Storm Protection
+# 99. Event Storm Protection
 
 Large projects may generate many events.
 
@@ -2093,7 +2270,7 @@ A short aggregation window may produce one affected scheduling update.
 
 ---
 
-# 99. Event Privacy
+# 100. Event Privacy
 
 Event payloads may contain sensitive references.
 
@@ -2111,7 +2288,7 @@ Do not expose raw event payload publicly.
 
 ---
 
-# 100. Event Retention
+# 101. Event Retention
 
 Important execution events should be durable.
 
@@ -2134,7 +2311,7 @@ Retention policy will be defined separately.
 
 ---
 
-# 101. Core Event Flow
+# 102. Core Event Flow
 
 Conceptually:
 
@@ -2155,7 +2332,7 @@ This loop continues until the project reaches an outcome.
 
 ---
 
-# 102. Example End-to-End Event Flow
+# 103. Example End-to-End Event Flow
 
 Goal:
 
@@ -2249,7 +2426,7 @@ Project Memory receives the complete execution history.
 
 ---
 
-# 103. Event Taxonomy Invariants
+# 104. Event Taxonomy Invariants
 
 ## Invariant 1
 
@@ -2291,9 +2468,37 @@ Historical events remain even after current state changes.
 
 System truth is produced through validated state changes, not agent narration.
 
+## Invariant 11
+
+An external tool request does not imply authorization.
+
+## Invariant 12
+
+External authorization does not imply a Hatcommways domain state change.
+
+## Invariant 13
+
+Raw external credentials must never appear in event payloads.
+
+## Invariant 14
+
+External identity revocation must prevent future governed external access.
+
+## Invariant 15
+
+AgentCore operational events remain distinct from Hatcommways domain events.
+
+## Invariant 16
+
+External tool failure must not automatically block unrelated project execution.
+
+## Invariant 17
+
+Product audit and runtime traces should be correlatable without exposing sensitive data.
+
 ---
 
-# 104. Initial Event Families
+# 105. Initial Event Families
 
 The initial event families are:
 
@@ -2322,12 +2527,16 @@ The initial event families are:
 23. Appreciation
 24. Notifications
 25. Audit / Agent Runtime
+26. External Tools
+27. External Identity
+28. Gateway / External Integration Operations
+29. Trace Correlation
 
 These categories are broad enough to support the current product without inventing domain-specific event systems.
 
 ---
 
-# 105. Final Principle
+# 106. Final Principle
 
 Hatcommways should be understood as a continuously evolving execution state driven by meaningful events.
 

@@ -818,7 +818,9 @@ This registry should be machine-readable eventually.
 
 Agents should not receive unrestricted database access.
 
-Instead they use governed tools.
+Instead they use two separate classes of governed tools.
+
+## Internal Hatcommways Tools
 
 Examples:
 
@@ -831,13 +833,43 @@ Examples:
 - propose_replan
 - propose_schedule
 
-Tools enforce:
+These tools call Hatcommways domain services through governed internal interfaces. They enforce:
 
 - authorization
 - project scope
 - field filtering
 - versioning
 - audit
+
+Internal tools do not require AgentCore Gateway merely because they are agent tools.
+
+## External Tools
+
+Examples:
+
+- get_calendar_availability
+- create_approved_calendar_event
+- send_approved_email
+- request_external_meeting
+- call_partner_api
+
+These tools interact with third-party systems and are exposed through AgentCore Identity and AgentCore Gateway where the integration is managed through AgentCore.
+
+Conceptually:
+
+Strands Agent
+→ Hatcommways Agent Permission Check
+→ Hatcommways User / Organization Authorization
+→ AgentCore Identity
+→ AgentCore Gateway
+→ External Tool / API
+
+Core principle:
+
+> Hatcommways decides whether an external action is allowed.
+> AgentCore provides the governed identity and gateway through which that action is executed.
+
+Agents must not receive unrestricted access to backend services or external systems, and must not receive raw external credentials in prompts, memory, source code, or normal tool arguments.
 
 ---
 
@@ -1190,17 +1222,24 @@ Core rule:
 
 # 52. AgentCore Gateway Boundary
 
-Potential future use:
-
-Expose external capabilities to agents through governed interfaces.
+AgentCore Gateway is the controlled execution boundary for selected external tools.
 
 Examples:
 
 - email
 - calendar
 - organization APIs
-- document systems
 - external scheduling tools
+- future partner integrations
+
+Conceptually:
+
+Agent
+→ approved capability
+→ Gateway
+→ external system
+
+Gateway helps prevent agents from directly handling raw integration credentials. It does not replace Hatcommways' internal tool router. Internal domain tools remain inside Hatcommways.
 
 This naturally fits Hatcommways' tool-governance model.
 
@@ -1208,30 +1247,69 @@ This naturally fits Hatcommways' tool-governance model.
 
 # 53. AgentCore Identity Boundary
 
-Potential use:
+AgentCore Identity manages governed external access for agents. It may support:
 
-Secure agent access to external systems/resources.
+- agent/workload identity
+- delegated user access
+- delegated organization access
+- third-party credentials
+- access tokens
+- scoped authorization to external systems
 
-This may become valuable when agents act with delegated user/organization permissions.
+Hatcommways domain authorization remains authoritative for project-level permission. Before AgentCore Identity is used, Hatcommways determines whether the project permits the action, whether the user or organization authorized it, whether the agent has the required tool permission, and whether human approval is required.
 
-Hatcommways' own application authorization still remains necessary.
+External authorization requires:
+
+Hatcommways Authorization
++
+Human / Organization Delegation
++
+Agent Tool Permission
++
+AgentCore Identity
++
+AgentCore Gateway
+
+No single layer independently grants complete authority.
 
 ---
 
 # 54. AgentCore Observability Boundary
 
-AgentCore Observability can complement Hatcommways operational monitoring.
+Hatcommways uses AgentCore Observability for agent-infrastructure tracing. It complements but does not replace Hatcommways product audit.
 
-Hatcommways needs visibility into:
+AgentCore Observability provides visibility into:
 
-- agent run
-- trigger
-- model
-- tools
+- Strands agent runs
+- model calls
+- tool calls
+- Gateway calls
 - latency
-- errors
 - retries
-- state versions
+- failures
+- execution paths
+
+Hatcommways Audit answers who accepted responsibility, who approved a plan, what organization committed, and what timeline version became authoritative.
+
+AgentCore Observability answers which agent ran, which tools it invoked, where latency occurred, which external call failed, and what execution path occurred.
+
+Core principle:
+
+> Audit explains authority and product state.
+> Observability explains runtime execution.
+
+A common correlation identifier should connect:
+
+Domain Event
+→ Orchestrator Run
+→ Strands Agent Run
+→ Model Invocation
+→ Tool Invocation
+→ AgentCore Gateway Call
+→ External System Result
+→ Resulting Domain Event
+
+Trace attributes must not contain sensitive values unnecessarily. Prefer resource ids, project ids, tool names, safe reason codes, and correlation ids.
 
 Product-level audit data should still remain in Hatcommways.
 
@@ -1901,61 +1979,94 @@ Payment processing remains outside Hatcommways initially.
 
 AgentCore complements Hatcommways architecture; it does not replace domain truth.
 
+## Invariant 13
+
+Internal Hatcommways tools and external third-party tools remain separate capability classes.
+
+## Invariant 14
+
+AgentCore Identity and Gateway do not replace Hatcommways project authorization.
+
+## Invariant 15
+
+Agents never receive raw third-party credentials.
+
+## Invariant 16
+
+External tool availability follows least privilege and valid user or organization delegation.
+
+## Invariant 17
+
+AgentCore Observability does not replace Hatcommways product audit.
+
+## Invariant 18
+
+External systems do not become the source of truth for Hatcommways project state.
+
 ---
 
 # 81. Initial Architecture Diagram
 
 Conceptually:
 
-                     ┌────────────────────┐
-                     │   Web / PWA Client │
-                     └─────────┬──────────┘
-                               │
-                               ▼
-                     ┌────────────────────┐
-                     │   Application API  │
-                     └─────────┬──────────┘
-                               │
-                    ┌──────────┴───────────┐
-                    │                      │
-                    ▼                      ▼
-        ┌─────────────────────┐   ┌───────────────────┐
-        │ Identity / Policy   │   │  Domain Services  │
-        └─────────────────────┘   └─────────┬─────────┘
-                                            │
-                                            ▼
-                                ┌─────────────────────┐
-                                │  Execution Engine   │
-                                └─────────┬───────────┘
-                                          │
-                                          ▼
-                                ┌─────────────────────┐
-                                │   Domain Events     │
-                                └──────┬──────┬───────┘
-                                       │      │
-                     ┌─────────────────┘      └─────────────────┐
-                     ▼                                          ▼
-          ┌────────────────────┐                    ┌────────────────────┐
-          │ Agent Orchestrator │                    │ Background Workers │
-          └──────────┬─────────┘                    └────────────────────┘
-                     │
-                     ▼
-          ┌────────────────────┐
-          │ Strands Runtime    │
-          │ ~24 Agents         │
-          └──────────┬─────────┘
-                     │
-             ┌───────┴────────┐
-             ▼                ▼
-      Governed Tools      Agent Memory
+                         ┌──────────────────────┐
+                         │    Web / PWA         │
+                         └──────────┬───────────┘
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │   Application API    │
+                         └──────────┬───────────┘
+                                    │
+                 ┌──────────────────┴─────────────────┐
+                 │                                    │
+                 ▼                                    ▼
+        Identity / Policy                      Domain Services
+                                                      │
+                                                      ▼
+                                             Execution Engine
+                                                      │
+                                                      ▼
+                                                Domain Events
+                                                      │
+             ┌────────────────────────────────────────┼───────────────────────┐
+             │                                        │                       │
+             ▼                                        ▼                       ▼
+   Background Workers                       Agent Orchestrator         Read / Map Models
+                                                      │
+                                                      ▼
+                                               Context Builder
+                                                      │
+                                                      ▼
+                                               Strands Runtime
+                                                      │
+                                             Specialized Agents
+                                                      │
+                          ┌───────────────────────────┴─────────────────────────┐
+                          │                                                     │
+                          ▼                                                     ▼
+               Internal Hatcommways Tools                             External Tools
+                          │                                                     │
+                          ▼                                                     ▼
+                    Domain Services                                  AgentCore Identity
+                                                                                │
+                                                                                ▼
+                                                                      AgentCore Gateway
+                                                                                │
+                                                                    ┌───────────┼───────────┐
+                                                                    ▼           ▼           ▼
+                                                                  Email      Calendar   External APIs
+
+
+                    Agent execution / tool activity
+                                 │
+                                 ▼
+                     AgentCore Observability
 
 Shared:
 PostgreSQL
 Object Storage
 Cache
-Audit/Event History
+Event / Audit History
 Map Projections
-Observability
-
-Optional:
-Amazon Bedrock AgentCore
+Application Observability
