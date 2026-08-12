@@ -1333,6 +1333,18 @@ Core events:
 - replanning.rejected
 - replanning.failed
 
+Affected execution-region events:
+
+- execution_region.calculated
+- execution_region.expanded
+- execution_region.invalidated
+
+`execution_region.calculated` means the deterministic affected-subgraph calculation completed for a source change.
+
+`execution_region.expanded` means validation discovered a broader dependency, shared capacity constraint, or project-wide consequence requiring more of the graph to be included.
+
+`execution_region.invalidated` means a previously calculated region is no longer safe to use because relevant state changed.
+
 ---
 
 # 68. replanning.requested
@@ -1495,6 +1507,18 @@ Memory events:
 - memory.failure_recorded
 - memory.lesson_recorded
 - memory.blueprint_created
+- execution_memory.recorded
+- failure_memory.recorded
+- blueprint_memory.created
+- memory.reuse_evaluated
+- memory.reuse_applied
+- memory.reuse_rejected
+
+`memory.reuse_evaluated` records that historical memory was assessed for the current context. It does not mean that the memory was applied.
+
+`memory.reuse_applied` records that an applicable memory reference influenced a validated proposal or decision.
+
+`memory.reuse_rejected` records that a candidate memory was not used because it was inapplicable, unauthorized, stale, low-confidence, or contradicted by current state.
 
 ---
 
@@ -1650,6 +1674,23 @@ Operational events:
 - agent_run.retry_scheduled
 - agent_run.exhausted
 - agent_run.cancelled
+
+Bounded agent-graph events:
+
+- agent_graph.requested
+- agent_graph.started
+- agent_graph.completed
+- agent_graph.failed
+
+These events describe one bounded Strands Graph reasoning episode. They should reference the graph run id, source event, affected execution region, participating agents, and source state versions.
+
+Evaluation events:
+
+- evaluation.started
+- evaluation.completed
+- evaluation.failed
+
+Evaluation events are operational and belong to the evaluation harness. They do not represent project-domain changes.
 
 These are operational, not public project events.
 
@@ -2078,6 +2119,24 @@ Examples:
 - acceleration.proposed
 - event_schedule.proposed
 
+The bounded proposal lifecycle may use:
+
+- proposal.generated
+- proposal.merged
+- proposal.accepted
+- proposal.rejected
+- proposal.stale
+
+`proposal.generated` records a schema-defined agent result.
+
+`proposal.merged` records that compatible proposals were combined while preserving provenance.
+
+`proposal.accepted` means the proposal passed the applicable validation and approval boundary. Authoritative state changes only when the domain service completes its transaction.
+
+`proposal.rejected` means validation, permission, conflict resolution, or human review rejected it.
+
+`proposal.stale` means its source state versions no longer match current authoritative state and it cannot silently apply.
+
 Never emit:
 
 task.created
@@ -2496,6 +2555,14 @@ External tool failure must not automatically block unrelated project execution.
 
 Product audit and runtime traces should be correlatable without exposing sensitive data.
 
+## Invariant 18
+
+An agent proposal event does not mean the proposal became authoritative state.
+
+## Invariant 19
+
+Affected-region, bounded-graph, evaluation, and memory-reuse events remain internal unless a separate public-safe product event is produced.
+
 ---
 
 # 105. Initial Event Families
@@ -2531,6 +2598,11 @@ The initial event families are:
 27. External Identity
 28. Gateway / External Integration Operations
 29. Trace Correlation
+30. Affected Execution Region
+31. Bounded Agent Graph
+32. Proposal Lifecycle
+33. Evaluation
+34. Execution / Failure / Blueprint Memory
 
 These categories are broad enough to support the current product without inventing domain-specific event systems.
 

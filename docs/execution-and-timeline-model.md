@@ -695,6 +695,76 @@ Core principle:
 
 > A local problem should not freeze the whole project.
 
+## Affected Execution Region
+
+A project change must not automatically cause the entire project to be replanned.
+
+Hatcommways first determines the affected execution region or subgraph. This region contains the tasks, dependencies, responsibilities, actor-capacity constraints, events, and timeline windows whose current execution assumptions may no longer hold.
+
+Example:
+
+A → B → C → D
+
+E → F
+
+G → H
+
+If the actor responsible for B leaves, the likely affected region is:
+
+B → C → D
+
+The independent branches E → F and G → H remain stable unless another relationship makes the impact broader.
+
+The affected-region calculation should consider:
+
+- the changed object and its direct execution relationships
+- upstream constraints that may limit available alternatives
+- downstream tasks, events, and timeline windows that depend on the changed state
+- responsibility readiness and actor availability
+- actor capacity and contention across otherwise independent tasks
+- project-wide conditions such as pause, cancellation, major scope change, or shared approval
+- cross-branch resources or events that require the region to expand
+
+## Readiness During Selective Replanning
+
+Selective replanning must preserve the existing readiness distinctions:
+
+- logical readiness
+- responsibility readiness
+- capacity readiness
+- execution readiness
+
+A task may remain logically ready while losing responsibility or capacity readiness. The affected region should include tasks whose readiness or achievable timing changes, without invalidating unrelated tasks.
+
+Actor capacity is part of the calculation. If one actor becomes unavailable, Hatcommways should identify the tasks that depend on that actor or shared capacity. If new capacity joins, it should identify only the branches whose parallelism or duration may improve.
+
+## Selective Timeline Recalculation
+
+After the affected region is calculated, Hatcommways should:
+
+1. preserve unaffected branches and their accepted execution state
+2. selectively invalidate stale readiness or timing inside the affected region
+3. update the relevant graph edges, responsibilities, capacity constraints, and event conditions
+4. recalculate only the affected timeline windows and downstream completion impact
+5. expand the region when validation discovers a wider dependency or project-wide consequence
+6. persist the new revision with its source event, affected region, expansion reasons, and unchanged branches
+
+Reasons to expand the affected region may include:
+
+- a shared actor or specialist creates contention outside the initial branch
+- a project-wide event, approval, location, or support condition changes
+- a dependency edge connects the region to another branch
+- the expected project completion or critical path changes
+- a proposed local change violates a project-wide invariant
+
+Selective invalidation must be explicit. A local change should invalidate only the assumptions and derived state that depend on it.
+
+This approach reduces reasoning cost and latency, avoids unnecessary mutations, improves stability under concurrent events, and makes plan changes easier to explain and audit.
+
+Core principle:
+
+> Replan the affected execution region, not the entire project, unless the change has project-wide consequences.
+
 ---
 
 # 22. Blockers
@@ -1465,6 +1535,10 @@ Execution readiness should be deterministic wherever possible.
 ## Invariant 10
 
 Concurrent agent results must be checked against current project state before application.
+
+## Invariant 11
+
+Replanning preserves unaffected execution branches unless a validated broader dependency requires expansion.
 
 ---
 

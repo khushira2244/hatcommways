@@ -950,6 +950,67 @@ may independently trigger:
 
 These agents should not be artificially serialized if their inputs are independent.
 
+## Bounded Strands Graph Execution
+
+The 24 Hatcommways agents must not be modeled as one permanent global graph.
+
+Strands Graph is an execution primitive for a bounded reasoning episode. Hatcommways owns the long-lived project lifecycle, event routing, permissions, versions, decisions, and authoritative state.
+
+Conceptually:
+
+Domain Event
+→ Trigger Router
+→ identify affected execution region
+→ choose relevant agents
+→ construct or select a bounded Strands Graph
+→ execute independent graph nodes concurrently where dependencies permit
+→ merge typed results
+
+A bounded graph run should define:
+
+- graph run id
+- source event and correlation id
+- affected execution region
+- source project, task-graph, actor-graph, and timeline versions
+- participating specialized agents
+- graph nodes and dependencies
+- allowed parallel branches
+- fan-out and fan-in points
+- completion and failure conditions
+
+Example:
+
+responsibility.accepted
+
+may activate a bounded graph containing:
+
+- Actor Capacity Agent
+- Parallelization Agent
+- Acceleration Agent
+
+followed by:
+
+- Timeline Planning Agent, if the earlier results demonstrate a material timing effect
+
+Independent nodes may run concurrently. Fan-in occurs through typed proposals rather than free-form agent conversation.
+
+Bounded cyclic refinement may be used only where a reasoning result requires a limited, explicit review or repair cycle. Every cycle must have a stopping condition, attempt limit, and no-progress protection. A graph run must not remain alive for the lifetime of a project.
+
+## Proposal Merger / Conflict Resolver
+
+Several agents in one graph may produce compatible or conflicting proposals.
+
+The Proposal Merger / Conflict Resolver should:
+
+- combine compatible changes that reference the same current state
+- preserve the provenance of every contributing agent and memory reference
+- detect overlapping or contradictory writes
+- reject ambiguous conflicts rather than guessing
+- route repair, rerun, or human review where appropriate
+- produce a merged typed proposal for deterministic validation
+
+Proposal merging does not make a proposal authoritative. Schema, reference, version, domain-invariant, permission, and approval checks still occur before a domain service may apply a change.
+
 ---
 
 # 33. Agent Input Contracts
@@ -1320,6 +1381,8 @@ Responsibilities:
 - prevent no-progress loops
 - route human decisions
 - persist validated results
+
+For reasoning-heavy events, the orchestrator also resolves the affected execution region, constructs/selects the bounded Strands Graph, tracks graph completion, and routes typed proposals through merge and validation boundaries.
 
 ---
 

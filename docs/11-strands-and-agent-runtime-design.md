@@ -459,6 +459,36 @@ Each run should:
 - stop deterministically
 - record result
 
+## Bounded Strands Graph Run Contract
+
+When a reasoning objective requires multiple agents, the runtime constructs or selects a bounded Strands Graph containing only the relevant specialized agents.
+
+Each graph run should contain:
+
+- graph_run_id
+- source_event_id
+- correlation_id
+- project_id
+- affected_execution_region
+- source_project_version
+- source_task_graph_version
+- source_actor_graph_version
+- source_timeline_version
+- participating_agents
+- graph nodes and dependencies
+- allowed parallel branches
+- completion and failure conditions
+
+Agents execute concurrently where graph dependencies permit. Fan-out and fan-in are bounded to the current reasoning objective.
+
+The graph may use bounded cyclic refinement only when justified by an explicit review or repair need. Cycles require a maximum attempt count, no-progress detection, and deterministic termination.
+
+The 24 Hatcommways agents remain specialized reasoning workers. A Strands Graph is not a new agent and is not a permanent project workflow.
+
+Core principle:
+
+> Strands Graph executes bounded multi-agent reasoning episodes; Hatcommways owns long-lived orchestration.
+
 ---
 
 # 19. Agent Context Builder
@@ -740,6 +770,36 @@ fields:
 - explanation
 - confidence
 
+## Typed Agent Proposal Contract
+
+Every consequential reasoning agent should return a schema-defined proposal rather than unstructured prose.
+
+Example:
+
+ReplanningProposal
+
+- proposal_id
+- project_id
+- agent_id
+- agent_run_id
+- source_project_version
+- source_task_graph_version
+- source_actor_graph_version
+- source_timeline_version
+- affected_task_ids
+- affected_responsibility_ids
+- proposed_dependency_changes
+- proposed_timeline_changes
+- proposed_responsibility_changes
+- reason_codes
+- evidence_references
+- memory_references
+- confidence
+
+Exact contracts may differ by agent, but every proposal must identify its source state, affected scope, proposed changes, provenance, and confidence.
+
+Agent-facing narrative may accompany a proposal for explanation. It must not be parsed as the source of authoritative mutations.
+
 ---
 
 # 26. Output Validation
@@ -755,6 +815,21 @@ After a Strands agent returns:
 7. persist proposal or reject
 
 LLM output is untrusted input until validation succeeds.
+
+The full deterministic validation pipeline is:
+
+Strands reasoning
+→ typed proposal
+→ schema validation
+→ object/reference validation
+→ state-version validation
+→ domain-invariant validation
+→ permission validation
+→ conflict/merge validation
+→ human approval where required
+→ authoritative transaction
+
+Deterministic validators decide whether a proposal is eligible to become state. Agents never directly perform the authoritative mutation.
 
 ---
 
@@ -795,6 +870,29 @@ Possible actions:
 - rerun
 - preserve as historical proposal
 - merge only if explicitly safe
+
+Example:
+
+A Timeline or Replanning Agent begins against `timeline_version = 12`.
+
+Before application, the authoritative timeline becomes version 13.
+
+The proposal must not silently overwrite version 13. The runtime marks it stale, records the source and current versions, and rejects it. It reruns only when the underlying reasoning is still necessary for the current affected region.
+
+Stale proposals remain available for operational trace and proposal history where policy permits, but they never become current truth.
+
+## Proposal Merging
+
+When concurrent graph nodes return proposals, the Proposal Merger / Conflict Resolver should:
+
+- merge compatible changes against the same source versions
+- preserve each agent's provenance, reason codes, evidence, and memory references
+- detect overlapping writes and contradictory graph or timeline changes
+- reject ambiguous conflicting changes
+- rerun only the affected reasoning nodes when repair is safe
+- escalate to human review when the conflict represents a consequential choice
+
+Merged output is a new typed proposal and must pass the complete validation pipeline.
 
 ---
 
@@ -989,6 +1087,37 @@ Types available:
 
 The runtime should retrieve memory through governed interfaces.
 
+## Memory Context Contract
+
+The Context Builder retrieves only memory relevant to the affected execution region and reasoning objective.
+
+Every reusable memory reference supplied to an agent should include:
+
+- memory id and type
+- provenance
+- source scope
+- source project type
+- context signature
+- project scale
+- actor structure where relevant
+- dependency or failure pattern where relevant
+- outcome quality
+- recency
+- reuse count where relevant
+- confidence
+- applicability score
+- reason for retrieval
+
+Agents must distinguish:
+
+current state facts
+
+from:
+
+historical/reusable memory
+
+Current authoritative state always wins. A semantically similar memory must be ignored or qualified when its scale, topology, actor structure, outcome quality, permissions, or context make it inapplicable.
+
 ---
 
 # 39. Agent Working Memory
@@ -1118,6 +1247,39 @@ Possible dimensions:
 
 Do not rely only on whether the model returned successfully.
 
+## Evaluation Harness and Scenario Corpus
+
+Hatcommways should maintain a conceptual scenario corpus of approximately 20–30 deterministic cases. The harness runs these fixtures against the same agent contracts, bounded graph runtime, governed tools, validators, permission rules, and stale-result checks used in production.
+
+Example scenario:
+
+Venue becomes unavailable 12 hours before an event.
+
+Expected behavior:
+
+- blocker detected
+- affected execution region calculated
+- unrelated branches preserved
+- relevant replanning agents activated
+- stale state not overwritten
+- external commitment requires authorization and approval
+- resulting proposal is schema valid
+
+Potential metrics:
+
+- correct agent activation rate
+- proposal schema validity rate
+- stale proposal rejection rate
+- unnecessary task mutation rate
+- dependency preservation rate
+- approval-boundary violation rate
+- scenario completion rate
+- external tool failure recovery rate
+- irrelevant memory reuse rate
+- useful memory reuse rate
+
+Evaluation must measure agent-system behavior, not only whether an LLM produced plausible text.
+
 ---
 
 # 46. Agent Observability
@@ -1135,6 +1297,25 @@ Each run should produce traces for:
 - failure
 
 This is particularly important with concurrent agents.
+
+AgentCore Observability should trace:
+
+domain event
+→ affected execution region
+→ bounded Strands Graph run
+→ participating agents
+→ model calls
+→ memory retrieval
+→ internal tool calls
+→ external Gateway calls where applicable
+→ typed proposal
+→ merge/conflict result
+→ validation result
+→ resulting domain event
+
+Trace metadata should include graph run id, agent run ids, correlation and causation ids, source state versions, affected region, safe memory references, tool names, latency, retries, failures, and stale-result outcomes.
+
+Do not log secrets, raw hidden reasoning, unnecessary private memory content, or raw third-party credentials.
 
 ---
 
@@ -1722,6 +1903,22 @@ Sensitive data must not be inserted unnecessarily into traces.
 ## Invariant 18
 
 External system state never silently replaces Hatcommways authoritative domain state.
+
+## Invariant 19
+
+Only agents relevant to the affected execution region participate in a bounded graph run.
+
+## Invariant 20
+
+Concurrent proposals are merged only when compatible and must retain provenance.
+
+## Invariant 21
+
+Current authoritative state overrides historical or reusable memory.
+
+## Invariant 22
+
+Evaluation measures governed system behavior, including validation, permissions, selective mutation, memory applicability, and failure recovery.
 
 ---
 

@@ -734,6 +734,29 @@ The orchestrator is infrastructure.
 
 It is not one of the 24 reasoning agents.
 
+## Trigger Router
+
+The Trigger Router maps a domain event and current project state to eligible deterministic reactions and reasoning work. It filters irrelevant triggers before model execution.
+
+## Affected Subgraph Resolver
+
+The Affected Subgraph Resolver deterministically calculates the smallest safe execution region influenced by the source event.
+
+It considers:
+
+- changed tasks, dependencies, responsibilities, actors, events, and project conditions
+- upstream constraints
+- downstream impact
+- actor capacity and contention
+- reasons the region must expand
+- whether the change has project-wide consequences
+
+Its output scopes context construction, bounded graph execution, selective invalidation, and timeline recalculation. It preserves unaffected branches.
+
+Core principle:
+
+> Hatcommways replans affected execution regions rather than blindly regenerating the entire project.
+
 ---
 
 # 31. Strands Agents SDK
@@ -774,6 +797,10 @@ Responsibilities:
 - emit agent runtime events
 
 The agent runtime should not own core transactional business state.
+
+For multi-agent reasoning, the runtime executes bounded Strands Graph runs selected or constructed for one reasoning objective. It does not host one permanent project-lifetime graph.
+
+Each bounded graph contains only relevant specialized agents, explicit graph dependencies, permitted parallel branches, bounded fan-out/fan-in, and deterministic completion conditions.
 
 ---
 
@@ -893,6 +920,35 @@ ReplanningProposal
 }
 
 The application must validate before state mutation.
+
+## Typed Proposals
+
+Every consequential reasoning result crosses the runtime boundary as a schema-defined proposal containing source state versions, affected objects, proposed changes, reason codes, evidence and memory references, confidence, and agent provenance.
+
+## Proposal Merger / Conflict Resolver
+
+Concurrent graph nodes may produce several proposals. The Proposal Merger / Conflict Resolver:
+
+- merges compatible changes
+- preserves contributing-agent provenance
+- detects conflicting writes
+- rejects ambiguous combinations
+- routes repair, rerun, or human review when appropriate
+
+Merged proposals remain untrusted until validation.
+
+## Proposal Validation Pipeline
+
+The deterministic validation boundary includes:
+
+- schema validation
+- object/reference validation
+- state-version validation
+- domain-invariant validation
+- permission validation
+- conflict/merge validation
+
+Human approval is added where the proposal is consequential. Only an authorized domain service may perform the authoritative transaction.
 
 ---
 
@@ -1083,6 +1139,20 @@ Memory categories:
 - failure/revision memory
 - blueprint memory
 - temporary agent working memory
+
+Memory is a first-class execution boundary, not a replacement for transactional state.
+
+## Memory Retriever
+
+The Memory Retriever supplies scoped project episodic, decision, execution-pattern, failure/revision, outcome, and blueprint memory to the Context Builder.
+
+Reusable memories include provenance, confidence, source scope, context signature, structural and scale metadata, and applicability. Current authoritative state is loaded first and always wins.
+
+## Memory Writer
+
+After a validated outcome, failure, revision, or decision, the Memory Writer creates structured durable memory with source references and state versions.
+
+It does not persist raw chain-of-thought or every agent message. Raw event/audit history remains separate and append-oriented.
 
 ---
 
@@ -1666,6 +1736,30 @@ New Domain Event
 
 The agent does not write arbitrary database state.
 
+The detailed bounded reasoning path is:
+
+Domain Event
+→ Trigger Router
+→ Affected Subgraph Resolver
+→ Context Builder
+→ Current State + Memory Retriever
+→ Bounded Strands Graph
+→ Specialized Agents
+→ Typed Proposals
+→ Proposal Merger / Conflict Resolver
+→ Schema Validation
+→ State-Version Validation
+→ Domain-Invariant Validation
+→ Permission Validation
+→ Decision Inbox where required
+→ Domain Service
+→ Transaction
+→ New Domain Event
+→ Validated Outcome / Failure
+→ Memory Writer
+
+This path preserves Hatcommways as the owner of long-lived orchestration and governance while Strands handles bounded reasoning/workflow execution.
+
 ---
 
 # 69. Read Path
@@ -1774,6 +1868,27 @@ This reduces:
 - latency
 - privacy exposure
 - confusion
+
+Memory included in context must be applicability-aware and carry provenance, confidence, and source scope. It must be clearly separated from current-state facts.
+
+---
+
+# 72.1 Evaluation Harness
+
+The Evaluation Harness sits beside the production runtime rather than in the user request path.
+
+It should run deterministic scenario fixtures against the same agent registry, graph execution, context, proposal contracts, validators, permission boundaries, and stale-result checks used by production.
+
+Conceptually:
+
+Scenario Corpus
+→ Evaluation Harness
+→ Bounded Strands Graph Runtime
+→ Typed Proposals / Tool Results
+→ Expected Invariants and Outcomes
+→ Evaluation Report
+
+Evaluation measures system behavior, including activation precision, schema validity, dependency preservation, unnecessary mutation, stale-result rejection, permission compliance, memory applicability, and external-tool failure recovery. It does not optimize solely for plausible model text.
 
 ---
 
@@ -2003,6 +2118,18 @@ AgentCore Observability does not replace Hatcommways product audit.
 
 External systems do not become the source of truth for Hatcommways project state.
 
+## Invariant 19
+
+Strands Graph executes bounded multi-agent reasoning episodes; Hatcommways owns long-lived orchestration.
+
+## Invariant 20
+
+Memory provides applicable historical context while PostgreSQL and current Hatcommways state remain execution truth.
+
+## Invariant 21
+
+Evaluation measures agent-system behavior using the same governed contracts and validators as production.
+
 ---
 
 # 81. Initial Architecture Diagram
@@ -2070,3 +2197,60 @@ Cache
 Event / Audit History
 Map Projections
 Application Observability
+
+Detailed governed reasoning path:
+
+                         Domain Event
+                              ↓
+                         Trigger Router
+                              ↓
+                 Affected Subgraph Resolver
+                              ↓
+                        Context Builder
+                       /               \
+              Current State       Memory Retriever
+                       \               /
+                              ↓
+                   Bounded Strands Graph
+                              ↓
+                     Specialized Agents
+                              ↓
+                       Typed Proposals
+                              ↓
+              Proposal Merger / Conflict Resolver
+                              ↓
+                      Schema Validation
+                   State-Version Validation
+                  Domain-Invariant Validation
+                     Permission Validation
+                              ↓
+                 Human Decision if required
+                              ↓
+                        Domain Service
+                              ↓
+                          Transaction
+                              ↓
+                     New Domain Event
+                              ↓
+                Validated Outcome / Failure
+                              ↓
+                         Memory Writer
+
+External capability path remains:
+
+Hatcommways Permission
+→ Human / Organization Delegation
+→ Agent Tool Permission
+→ AgentCore Identity
+→ AgentCore Gateway
+→ External System
+
+Beside the production runtime:
+
+Scenario Corpus
+→ Evaluation Harness
+→ Same Bounded Graph Runtime and Contracts
+→ Expected Invariants / Results
+→ Evaluation Report
+
+AgentCore Observability traces bounded graph runs, model calls, memory retrieval, tools, Gateway operations, latency, retries, and failures. Hatcommways product audit separately records authority and authoritative state changes.

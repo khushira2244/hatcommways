@@ -78,6 +78,36 @@ Each category has different:
 - update rules
 - reuse boundaries
 
+For technical execution, these categories form seven required memory capabilities:
+
+## A. Agent Working Memory
+
+Temporary context for one bounded agent or Strands Graph run.
+
+## B. Project Episodic Memory
+
+Important events, state transitions, decisions, and execution history within the current project. Project Episodic Memory is a structured view over relevant project history; it does not replace raw events.
+
+## C. Decision Memory
+
+What decision was made, by whom, when, why, against which state version, and with what affected scope.
+
+## D. Execution-Pattern Memory
+
+Reusable operational patterns derived from validated outcomes across projects.
+
+## E. Failure / Revision Memory
+
+Failures, causes, downstream consequences, replanning attempts, rejected alternatives, and successful mitigations.
+
+## F. Outcome Memory
+
+What ultimately happened, including outcome quality, partial success, unresolved work, and the relationship between the final result and the execution process.
+
+## G. Blueprint Memory
+
+Privacy-safe reusable task, dependency, actor, event, and mitigation structures derived from completed projects.
+
 ---
 
 # 4. Project Memory
@@ -440,6 +470,25 @@ Examples:
 
 This memory can improve future planning.
 
+Reusable execution memory should carry applicability metadata rather than relying on semantic similarity alone.
+
+Potential metadata includes:
+
+- source_project_type
+- context_signature
+- project_scale
+- actor_structure
+- dependency_pattern
+- location/context class where safe
+- outcome_quality
+- failure_pattern
+- mitigation_pattern
+- recency
+- reuse_count
+- confidence
+- applicability_score
+- provenance
+
 ---
 
 # 21. Execution Pattern Sources
@@ -532,6 +581,26 @@ Hatcommways should remember:
 - final outcome
 
 Do not store only successful execution.
+
+Failure Memory should preserve the causal path and mitigation, not merely a failure label.
+
+Example:
+
+venue confirmation delayed
+→ setup delayed
+→ volunteers idle
+→ event started late
+
+Stored failure pattern:
+
+late venue confirmation
+→ downstream setup risk
+
+Stored mitigation:
+
+venue confirmation should occur before a defined pre-event threshold
+
+A future Event Planning Agent may retrieve this pattern and propose an earlier confirmation dependency. The agent must still validate the pattern against the current event, actors, location, and timeline.
 
 ---
 
@@ -648,6 +717,8 @@ A blueprint may contain:
 - outcome summary
 
 Blueprints must exclude private participant/payment information unless explicitly permitted.
+
+Blueprint reuse must be applicability-aware. Scale-sensitive counts, durations, actor allocations, locations, and organization structures should be regenerated when the current context differs materially from the source project.
 
 ---
 
@@ -771,6 +842,55 @@ Memory retrieval should be:
 - permission-aware
 - agent-specific
 - query-driven
+
+## Applicability-Aware Retrieval
+
+Reusable memory must not use a "closest text wins" policy.
+
+Retrieval and ranking should consider:
+
+semantic relevance
++
+structural similarity
++
+project scale
++
+actor structure
++
+outcome quality
++
+recency
++
+applicability
+
+Example:
+
+Past project:
+
+- community cleanup
+- 12 volunteers
+- 1 location
+- 4 hours
+
+Current project:
+
+- community cleanup
+- 45 volunteers
+- 3 locations
+- 2 organizations
+
+The memory system may conclude:
+
+- the dependency pattern is applicable
+- timing is only partially applicable
+- actor allocation is not directly reusable
+- scale-sensitive values must be regenerated
+
+Each supplied memory reference should include provenance, source scope, confidence, applicability metadata, and the reason it was selected. Agents must clearly distinguish current-state facts from historical or reusable context.
+
+Core rule:
+
+> Memory recommends context. Current transactional state remains truth.
 
 ---
 
@@ -1423,6 +1543,32 @@ For:
 
 Technology choice will be defined later.
 
+## Memory Retriever Boundary
+
+The Memory Retriever accepts an authorized, agent-specific query and current-context signature. It returns only relevant memory with provenance, confidence, applicability metadata, and privacy-safe fields.
+
+It should:
+
+- retrieve current-project episodic and decision memory first where relevant
+- retrieve failure/revision and blueprint memory only when useful
+- compare structural context and scale rather than semantic similarity alone
+- reject or down-rank inapplicable memories
+- enforce project, participant, organization, community, and agent access boundaries
+- attach stable memory references for proposal provenance
+
+## Memory Writer Boundary
+
+The Memory Writer records durable memory only from validated facts, decisions, outcomes, failures, revisions, and approved lessons.
+
+It must not persist:
+
+- raw chain-of-thought
+- every model message
+- unvalidated agent guesses
+- transient graph-run scratch state
+
+Raw events remain append-only authoritative history. The Memory Writer creates structured contextual records with source references and state versions after the relevant outcome or decision has been validated.
+
 ---
 
 # 68. Embeddings
@@ -1598,6 +1744,14 @@ Facts and agent interpretations should be distinguishable.
 ## Invariant 10
 
 Structured facts should remain structured.
+
+## Invariant 11
+
+Reusable memory must carry applicability and provenance; semantic similarity alone is insufficient.
+
+## Invariant 12
+
+Memory Writer persists validated outcomes, failures, revisions, and decisions, not raw hidden reasoning.
 
 ---
 
