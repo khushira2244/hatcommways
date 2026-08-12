@@ -105,7 +105,7 @@ The initial architecture is divided into these domains:
 7. Community / Organization Intelligence
 8. Event and Scheduling Intelligence
 9. Blocker and Replanning Intelligence
-10. Support / Funding-State Intelligence
+10. Support-State Intelligence
 11. Map and Participation Intelligence
 12. Memory and Outcome Intelligence
 
@@ -613,7 +613,7 @@ Identify meaningful execution blockers.
 - responsibility vacancies
 - actor availability
 - event changes
-- funding/support state
+- support state, including optional externally arranged funding where relevant
 - delays
 - dependency changes
 
@@ -648,7 +648,7 @@ Generate revised execution plans after project reality changes.
 - dependency invalidation
 - scope change
 - blocker
-- support/funding change
+- support-state change
 - new actor capacity
 
 ## Responsibilities
@@ -705,7 +705,7 @@ Acceleration proactively searches for improvement.
 
 ## Purpose
 
-Interpret how financial/support state affects execution.
+Interpret how support state affects execution, including people, organizations, venue, materials, equipment, transport, expertise, and optional externally arranged funding where relevant.
 
 Hatcommways does not process payments.
 
@@ -714,7 +714,7 @@ Hatcommways does not process payments.
 - interpret project support state
 - identify tasks affected by insufficient support
 - distinguish affected vs unaffected work
-- interpret self-funded/community-funded/sponsor-supported/mixed structures
+- interpret the project's support model, including optional externally arranged funding where relevant
 - reason about support-related execution readiness
 
 ## Outputs
@@ -759,7 +759,7 @@ Map generation and aggregation remain deterministic.
 
 ## Purpose
 
-Interpret financial-support and organization-participation patterns.
+Interpret support and organization-participation patterns.
 
 ## Responsibilities
 
@@ -773,7 +773,7 @@ Interpret financial-support and organization-participation patterns.
 
 - support-map interpretation
 - organization participation summary
-- sponsor participation narrative
+- organization/support participation narrative
 
 This agent must not expose private contribution data.
 
@@ -783,7 +783,7 @@ This agent must not expose private contribution data.
 
 ## Purpose
 
-Maintain structured long-term project memory.
+Identify and structure project events, decisions, revisions, failures, execution transitions, and patterns that are candidates for durable memory.
 
 ## Responsibilities
 
@@ -803,11 +803,11 @@ Summarize and organize:
 
 ## Outputs
 
-- structured memory entries
+- candidate memory entries
 - summarized project state
-- durable execution history
+- candidate execution-history interpretations
 
-The memory agent does not replace raw event/audit storage.
+Durable memory persistence, promotion, supersession, and governed compaction remain controlled by the Memory Writer and validation rules.
 
 Raw system history remains deterministic and append-only.
 
@@ -1312,7 +1312,7 @@ Possible trigger families:
 
 ## Support Triggers
 
-- funding_state.changed
+- support.state_changed
 - contribution.updated
 - sponsor.joined
 
@@ -1366,6 +1366,10 @@ Direct agent-to-agent calls should exist only when there is a strong architectur
 Hatcommways requires a governed orchestration layer.
 
 The orchestrator is not counted as one of the 24 product agents.
+
+Core principle:
+
+> The orchestrator performs deterministic routing and governance; it does not replace specialized agent reasoning.
 
 Responsibilities:
 

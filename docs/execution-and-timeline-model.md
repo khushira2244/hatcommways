@@ -43,7 +43,7 @@ Execution reality may change because:
 - dependencies change
 - events move
 - project scope changes
-- funding/support state changes
+- support-state changes, including optional externally arranged funding where relevant
 - organizations join
 - new information appears
 - blockers appear
@@ -207,20 +207,34 @@ Logical readiness should usually be deterministic.
 
 ---
 
-# 7. Actor Readiness
+# 7. Responsibility and Capacity Readiness
 
-Actor Readiness answers:
+## Responsibility Readiness
 
-> Does this task currently have the responsible execution capacity it requires?
+Responsibility Readiness answers:
+
+> Do the required responsibilities exist, and have authorized actors accepted them?
 
 Possible conditions:
 
 - required responsibility exists
 - required responsibility has been accepted
-- responsible actor is available
-- minimum actor count is satisfied
-- required specialist role is filled
-- required organization actor is ready
+- required specialist responsibility is filled
+- required organization responsibility is accepted
+
+## Capacity Readiness
+
+Capacity Readiness answers:
+
+> Is sufficient available execution capacity present for the task to begin?
+
+Possible conditions:
+
+- responsible actors are currently available
+- minimum actor counts are satisfied
+- specialist capacity is sufficient
+- organization capacity is sufficient
+- actor contention does not consume the required capacity
 
 Example:
 
@@ -239,7 +253,9 @@ Current:
 
 Therefore:
 
-actor_ready = false
+responsibility_ready = true
+
+capacity_ready = false
 
 Even if:
 
@@ -257,7 +273,9 @@ Conceptually:
 
 logical readiness
 +
-actor readiness
+responsibility readiness
++
+capacity readiness
 +
 required project conditions
 =
@@ -268,7 +286,7 @@ Possible project conditions may include:
 - event readiness
 - manual approval
 - project state
-- funding/support state where applicable
+- support state where applicable
 - location/time availability
 - organization confirmation
 
@@ -276,7 +294,9 @@ Example:
 
 logical_ready = true
 
-actor_ready = true
+responsibility_ready = true
+
+capacity_ready = true
 
 required approval = true
 
@@ -300,7 +320,7 @@ Dependencies or required conditions are missing.
 
 ## Logically Ready
 
-Dependencies are satisfied, but actor responsibility or another execution condition is missing.
+Dependencies are satisfied, but responsibility, capacity, or another execution condition is missing.
 
 ## Execution Ready
 
@@ -342,7 +362,8 @@ Timeline calculations may use:
 
 - dependency graph
 - estimated duration
-- actor readiness
+- responsibility readiness
+- capacity readiness
 - actor availability
 - current active tasks
 - event dates
@@ -528,7 +549,9 @@ Task may become:
 
 logical_ready = true
 
-actor_ready = false
+responsibility_ready = false
+
+capacity_ready = false
 
 execution_ready = false
 
@@ -660,7 +683,7 @@ Examples:
 - blocker resolved
 - event scheduled
 - event postponed
-- funding state changed
+- support state changed
 - project scope changed
 - organization joined
 - project paused
@@ -779,7 +802,7 @@ Examples:
 - location unavailable
 - task delayed
 - approval missing
-- project funding/support insufficient where required
+- required project support unavailable or insufficient
 - external dependency changed
 
 A blocker should contain:
@@ -977,7 +1000,8 @@ Events participate in project execution.
 An event may depend on:
 
 - tasks
-- actor readiness
+- responsibility readiness
+- capacity readiness
 - participant count
 - schedule availability
 - organization confirmation
@@ -1053,7 +1077,7 @@ A single execution branch may pause without pausing the project.
 
 Example:
 
-Funding-related branch blocked.
+Support-dependent branch blocked.
 
 Volunteer coordination branch remains active.
 
@@ -1177,7 +1201,8 @@ responsibility.accepted
 
 may cause:
 
-- actor readiness recalculation
+- responsibility-readiness recalculation
+- capacity-readiness recalculation
 - task readiness recalculation
 - timeline recalculation
 - open-role count update
@@ -1360,9 +1385,20 @@ It does not control execution.
 
 ---
 
-# 49. Money / Support Relationship
+# 49. Support Relationship
 
-Financial support state may affect timeline only where a project explicitly marks it as an execution prerequisite.
+Support state may affect the timeline only where a project explicitly marks a particular support condition as an execution prerequisite.
+
+Support may include:
+
+- materials
+- venue
+- equipment
+- transport
+- expertise
+- organization support
+- people/capacity
+- optional externally arranged funding
 
 Example:
 
@@ -1370,15 +1406,15 @@ Task:
 Purchase materials
 
 requires:
-funding state = sufficient
+required material support = available
 
 Another task:
 
 Design poster
 
-does not require funding.
+does not require that support condition.
 
-Therefore insufficient funding should block only affected work, not the whole project.
+Therefore missing support should block only affected work, not the whole project.
 
 ---
 
@@ -1572,9 +1608,13 @@ Dynamic Timeline
 
 Dynamic Timeline
 +
-New Events
-=
-Replanning
+Meaningful State Change
+→
+Affected Execution Region
+→
+Selective Replanning
+→
+Revised Dynamic Timeline
 
 ---
 

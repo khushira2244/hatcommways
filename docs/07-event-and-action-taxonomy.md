@@ -1507,9 +1507,7 @@ Memory events:
 - memory.failure_recorded
 - memory.lesson_recorded
 - memory.blueprint_created
-- execution_memory.recorded
-- failure_memory.recorded
-- blueprint_memory.created
+- memory.execution_recorded
 - memory.reuse_evaluated
 - memory.reuse_applied
 - memory.reuse_rejected
@@ -2602,7 +2600,6 @@ The initial event families are:
 31. Bounded Agent Graph
 32. Proposal Lifecycle
 33. Evaluation
-34. Execution / Failure / Blueprint Memory
 
 These categories are broad enough to support the current product without inventing domain-specific event systems.
 

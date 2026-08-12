@@ -45,7 +45,7 @@ Examples:
 - event records
 - organization membership
 - visibility settings
-- funding state
+- support state
 
 Agent memory may summarize or retrieve this information, but memory must never silently override authoritative persisted state.
 
@@ -79,6 +79,8 @@ Each category has different:
 - reuse boundaries
 
 For technical execution, these categories form seven required memory capabilities:
+
+The nine memory categories above describe ownership, scope, visibility, lifetime, and governance dimensions. The seven capabilities below describe technical runtime behavior. They are complementary views of the same governed memory architecture, not competing taxonomies.
 
 ## A. Agent Working Memory
 
@@ -233,7 +235,7 @@ Hatcommways must not infer or retain unnecessary personal information.
 Participant Memory must not automatically contain:
 
 - private conversations unrelated to projects
-- exact payment information
+- restricted support or external-funding information
 - sensitive personal details unrelated to execution
 - hidden demographic inference
 - exact location history
@@ -660,7 +662,7 @@ Examples:
 
 - creator approved revised scope
 - organization accepted participation
-- project owner enabled public Money Map
+- project owner enabled public Support Map
 - event moved to another date
 - responsibility transferred
 
@@ -716,7 +718,7 @@ A blueprint may contain:
 - event structure
 - outcome summary
 
-Blueprints must exclude private participant/payment information unless explicitly permitted.
+Blueprints must exclude private participant or restricted support information unless explicitly permitted.
 
 Blueprint reuse must be applicability-aware. Scale-sensitive counts, durations, actor allocations, locations, and organization structures should be regenerated when the current context differs materially from the source project.
 
@@ -832,8 +834,8 @@ Timeline Planning Agent may need:
 
 It does not need:
 
-- private payment instructions
-- full sponsor history
+- private support instructions
+- full private organization-support history
 - unrelated participant messages
 
 Memory retrieval should be:
@@ -929,7 +931,7 @@ May read:
 
 May not read:
 
-- unrelated sponsor finances
+- unrelated private organization-support history
 - unrelated participant history
 
 ## Actor Fit Agent
@@ -944,7 +946,7 @@ May read:
 
 May not read:
 
-- private project payment instructions
+- private project support instructions
 
 ---
 
@@ -960,7 +962,7 @@ Goal, task, dependency, timeline, and parallelization agents may access:
 
 They should not automatically access:
 
-- exact donor details
+- private contributor details
 - unrelated user profile information
 
 ---
@@ -1028,14 +1030,14 @@ These agents benefit strongly from failure/revision memory.
 
 Support State Reasoning Agent may access:
 
-- funding mode
-- project funding state
+- support mode
+- project support state, including optional externally arranged funding where relevant
 - tasks whose execution explicitly depends on support
 - manually confirmed contribution state
 
 It should not need:
 
-- exact payment credentials
+- restricted external-funding credentials or instructions
 - private banking information
 
 ---
@@ -1056,7 +1058,7 @@ They must not query private raw data merely to create public narratives.
 
 # 45. Project Memory Agent
 
-Project Memory Agent may access broad project execution history because its role is to create durable structured summaries.
+Project Memory Agent may access broad project execution history because its role is to identify and structure candidate memory and summarize important execution history.
 
 It may read:
 
@@ -1068,7 +1070,9 @@ It may read:
 - support-state changes
 - project decisions
 
-Its outputs still require provenance.
+Its outputs may include candidate memory entries, structured summaries, and candidate execution-history interpretations. They still require provenance and validation.
+
+The agent does not control durable persistence, promotion, supersession, or compaction. Those remain governed by the Memory Writer and validation rules.
 
 ---
 
@@ -1203,7 +1207,7 @@ Every durable memory item should inherit or define appropriate visibility.
 
 Sensitive information may include:
 
-- payment instructions
+- restricted support instructions
 - exact private locations
 - contact information
 - private organization details
@@ -1293,13 +1297,13 @@ not:
 
 "Participant once lived in this area."
 
-Money Map needs:
+Support Map needs:
 
 approved contribution aggregation
 
 not:
 
-historical sponsor memory from unrelated projects.
+historical organization-support memory from unrelated projects.
 
 ---
 
@@ -1442,7 +1446,7 @@ Not every minor UI event deserves durable memory.
 
 Long-running projects may generate thousands of events.
 
-Project Memory Agent may create periodic structured compactions.
+Project Memory Agent may propose periodic structured compactions. The Memory Writer creates the durable compaction record only after validation.
 
 Example:
 
@@ -1455,7 +1459,7 @@ Week 2 Execution Summary
 
 with source references to those events.
 
-Raw data remains available for audit.
+Raw events remain append-only and available for audit.
 
 Compaction improves agent context efficiency.
 
@@ -1513,7 +1517,7 @@ For:
 - actors
 - events
 - permissions
-- funding state
+- support state
 - plan revisions
 
 ## Append-only event/audit store
@@ -1524,7 +1528,7 @@ For:
 - agent runs
 - decisions
 
-## Semantic retrieval store
+## Semantic retrieval capability
 
 For:
 
@@ -1532,6 +1536,8 @@ For:
 - lessons
 - similar blueprints
 - historical summaries
+
+A dedicated semantic/vector database is not required for the initial implementation. Structured relational storage remains primary. Semantic retrieval may later be introduced narrowly for similar completed projects, historical lessons, narrative decisions, reusable blueprint retrieval, and historical summaries.
 
 ## Cache / temporary store
 
@@ -1603,7 +1609,7 @@ Memory systems must protect against:
 
 - unauthorized cross-project access
 - accidental sponsor-history leakage
-- payment detail leakage
+- restricted support-detail leakage
 - exact location leakage
 - agent over-retrieval
 - stale authorization data
@@ -1685,6 +1691,8 @@ The Project Memory Agent should initially focus on:
 - event summaries
 - outcome preparation
 
+These are candidate-memory and summarization responsibilities. The Memory Writer governs durable persistence, validated promotion, supersession, and compaction records.
+
 It should not attempt to build a universal knowledge graph on Day 1.
 
 ---
@@ -1731,7 +1739,7 @@ Private sponsor history must not leak into public project views.
 
 ## Invariant 7
 
-Payment instructions must not enter general public semantic retrieval.
+Restricted support instructions must not enter general public semantic retrieval.
 
 ## Invariant 8
 

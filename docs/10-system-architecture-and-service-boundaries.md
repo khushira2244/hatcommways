@@ -194,7 +194,7 @@ Important product surfaces include:
 - events
 - project updates
 - decisions
-- completed contributions
+- completed support participation
 
 ## Organization
 
@@ -351,7 +351,7 @@ Owns:
 - creator-provided context
 - location context
 - timeframe
-- funding mode
+- support mode, including optional externally arranged funding where relevant
 - planning assumptions approved as state
 
 AI may interpret goals.
@@ -508,33 +508,43 @@ The service stores authoritative approved schedule.
 
 # 21. Support State Service
 
-Owns project-level support/funding execution state.
+Owns project-level support execution state.
 
 Responsibilities:
 
-- funding mode
-- funding target
-- reported contribution
-- project-confirmed contribution
+- support requirements
+- support types
+- support availability
+- confirmed support
 - support state
 - task support prerequisites
+- organization support
+- materials
+- venue
+- equipment
+- transport
+- expertise
+- optional externally arranged funding status
 - visibility rules
 
-It does not process money initially.
+Hatcommways coordinates support conditions. It does not move money or provide fundraising/payment infrastructure.
 
 ---
 
-# 22. Sensitive Payment Instruction Service
+# 22. Protected Support Reference Metadata
 
-Payment instructions should have a stricter data boundary.
+The initial architecture does not include a dedicated payment-instruction service or payment subsystem.
 
-Examples:
+If a future project requires an external support, contact, or link reference, it should be treated as protected project/integration metadata.
 
-- UPI/payment address
-- external payment link
-- payment contact instructions
+Examples may include:
 
-This service/module should enforce:
+- an organization support contact
+- an external support page
+- a venue, equipment, transport, or materials coordination reference
+- an optional externally arranged funding-status reference where genuinely required
+
+This metadata boundary should enforce:
 
 - field-level encryption where appropriate
 - narrow access control
@@ -542,7 +552,7 @@ This service/module should enforce:
 - exclusion from public projections
 - exclusion from general agent context
 
-Agents should almost never require access to this data.
+It is not a contribution ledger, money-movement system, or fundraising capability. Agents should receive only the minimum protected reference necessary for an authorized integration action.
 
 ---
 
@@ -740,7 +750,7 @@ The Trigger Router maps a domain event and current project state to eligible det
 
 ## Affected Subgraph Resolver
 
-The Affected Subgraph Resolver deterministically calculates the smallest safe execution region influenced by the source event.
+The Affected Subgraph Resolver deterministically calculates an initial safe affected execution region and expands it when validated dependencies, shared capacity constraints, cross-branch relationships, or project-wide consequences require broader scope.
 
 It considers:
 
@@ -1078,7 +1088,7 @@ A map projection layer can maintain privacy-safe derived views.
 Initial projections:
 
 - Action Map
-- Money / Support Map
+- Support Map
 - Sponsor / Organization Map
 - optional analytics maps
 
@@ -1140,7 +1150,7 @@ Memory categories:
 - blueprint memory
 - temporary agent working memory
 
-Memory is a first-class execution boundary, not a replacement for transactional state.
+Memory is a first-class runtime context subsystem, not a replacement for transactional state.
 
 ## Memory Retriever
 
@@ -1188,7 +1198,7 @@ Bad uses:
 
 - who owns Task 4?
 - is responsibility accepted?
-- what is current funding state?
+- what is current support state?
 - is dependency satisfied?
 
 Exact facts should use structured retrieval.
@@ -1232,15 +1242,16 @@ Do not hard-code product architecture around one model.
 
 # 49. Amazon Bedrock AgentCore
 
-AgentCore is optional but strongly relevant to Hatcommways production architecture.
+The initial Hatcommways architecture uses:
 
-Potential components:
-
-- AgentCore Runtime
-- AgentCore Memory
-- AgentCore Gateway
 - AgentCore Identity
+- AgentCore Gateway
 - AgentCore Observability
+
+The following are not required initially:
+
+- AgentCore Memory
+- AgentCore Runtime
 
 Use only where they strengthen a real product requirement.
 
@@ -1250,7 +1261,7 @@ Do not adopt every component solely for hackathon presentation.
 
 # 50. AgentCore Runtime Boundary
 
-Potential use:
+AgentCore Runtime is not required for the initial implementation. It may remain a future deployment option to:
 
 Host/deploy the Strands agent runtime.
 
@@ -1267,26 +1278,31 @@ It should not replace:
 
 # 51. AgentCore Memory Boundary
 
-Potential use:
+AgentCore Memory is not required for the initial implementation. It may be evaluated later only for narrowly scoped agent-oriented cross-run context.
 
-Support agent-oriented memory capabilities.
+Hatcommways owns:
 
-It may complement:
-
-- long-term contextual agent memory
-- execution-pattern retrieval
+- project memory
+- decision memory
+- execution-pattern memory
+- failure/revision memory
+- outcome memory
+- blueprint memory
 
 It must not replace:
 
+- Hatcommways memory governance
 - authoritative PostgreSQL project state
+- current Hatcommways execution truth
+- project history
 - responsibility history
 - permissions
 - task/dependency truth
 
 Core rule:
 
-> AgentCore Memory may enrich reasoning.
-> Hatcommways data stores remain execution truth.
+> AgentCore Memory may later enrich narrowly scoped agent context.
+> PostgreSQL and current Hatcommways state remain execution truth.
 
 ---
 
@@ -1511,7 +1527,7 @@ Examples:
 - organization committed
 - project visibility changed
 - plan approved
-- payment instruction changed
+- protected support reference changed
 - agent proposal applied
 - platform moderation action
 
@@ -1877,7 +1893,9 @@ Memory included in context must be applicability-aware and carry provenance, con
 
 The Evaluation Harness sits beside the production runtime rather than in the user request path.
 
-It should run deterministic scenario fixtures against the same agent registry, graph execution, context, proposal contracts, validators, permission boundaries, and stale-result checks used by production.
+It should run controlled scenario fixtures with deterministic assertions/invariants against the same agent registry, graph execution, context, proposal contracts, validators, permission boundaries, and stale-result checks used by production.
+
+Model reasoning may vary. Assertions around permissions, stale-state protection, schema validity, unaffected branches, and approval boundaries remain deterministic.
 
 Conceptually:
 
@@ -1939,7 +1957,7 @@ Important write operations should support idempotency.
 Examples:
 
 - responsibility acceptance
-- contribution confirmation
+- confirmed support recording
 - project publication
 - agent proposal application
 - event processing
@@ -1954,7 +1972,7 @@ Security-sensitive areas include:
 
 - authentication
 - authorization
-- payment instructions
+- protected support and integration metadata
 - exact locations
 - organization authority
 - agent tools
@@ -2088,7 +2106,7 @@ Structured facts use structured storage/retrieval.
 
 ## Invariant 11
 
-Payment processing remains outside Hatcommways initially.
+Hatcommways is not a fundraising/payment product; optional externally arranged funding remains only a support condition where execution genuinely depends on it.
 
 ## Invariant 12
 

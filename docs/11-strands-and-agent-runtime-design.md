@@ -545,8 +545,9 @@ Conceptually:
 
 Trigger Event
 → Determine affected region
-→ Determine agent
-→ Read agent permission profile
+→ Determine eligible agent(s)
+→ Determine whether a bounded Strands Graph is required
+→ Resolve relevant agent permission profiles
 → Load authoritative state
 → Retrieve allowed memory
 → Filter sensitive fields
@@ -1249,7 +1250,7 @@ Do not rely only on whether the model returned successfully.
 
 ## Evaluation Harness and Scenario Corpus
 
-Hatcommways should maintain a conceptual scenario corpus of approximately 20–30 deterministic cases. The harness runs these fixtures against the same agent contracts, bounded graph runtime, governed tools, validators, permission rules, and stale-result checks used in production.
+Hatcommways should maintain a conceptual scenario corpus of approximately 20–30 controlled scenario fixtures with deterministic assertions and invariants. Model output may vary. The harness runs these fixtures against the same agent contracts, bounded graph runtime, governed tools, validators, permission rules, and stale-result checks used in production.
 
 Example scenario:
 
@@ -1378,24 +1379,26 @@ The runtime interface should remain portable enough that local development works
 
 # 50. AgentCore Memory
 
-AgentCore Memory may be used for appropriate agent-oriented memory.
+AgentCore Memory is not required for the initial Hatcommways implementation.
 
-Potential uses:
+Hatcommways owns:
 
-- long-running contextual memory
-- cross-run agent context
+- project memory
+- execution-pattern memory
+- failure/revision memory
+- decision memory
+- outcome memory
+- blueprint memory
 
-But:
+AgentCore Memory may be evaluated later only for narrowly scoped agent-oriented cross-run context.
 
-PostgreSQL remains authoritative for execution truth.
+It must never replace:
 
-AgentCore Memory should never become the only record of:
-
-- responsibility acceptance
-- tasks
-- project state
+- Hatcommways memory governance
+- PostgreSQL/current execution truth
+- project history
+- responsibility state
 - permissions
-- financial state
 
 ---
 
@@ -1925,89 +1928,60 @@ Evaluation measures governed system behavior, including validation, permissions,
 # 71. Core Runtime Flow
 
 Domain Event
-
 ↓
-
 Trigger Router
-
 ↓
-
 Deterministic Precheck
-
 ↓
-
-Agent Eligibility Check
-
+Affected Subgraph Resolver
 ↓
-
-Agent Context Builder
-
+Agent / Graph Eligibility
 ↓
-
-Authorization / Memory Filtering
-
+Context Builder
+→ Current Authoritative State
+→ Memory Retriever
 ↓
-
-Strands Agent Run
-
+Bounded Strands Graph where required
 ↓
-
-Governed Tool Calls
-
+Specialized Agent(s)
 ↓
-
-Structured Output
-
+Typed Proposal(s)
 ↓
-
+Proposal Merger / Conflict Resolver where required
+↓
 Schema Validation
-
 ↓
-
+Object / Reference Validation
+↓
 State-Version Validation
-
 ↓
-
 Domain-Invariant Validation
-
 ↓
-
-Human Approval if Required
-
+Permission Validation
 ↓
-
-Domain Service Applies Change
-
+Human Decision if required
 ↓
-
+Domain Service
+↓
+Transaction
+↓
 New Domain Event
+↓
+Validated Outcome / Failure
+↓
+Memory Writer
 
 This is the core Hatcommways agent execution loop.
 
-For internal reasoning:
-
-Domain Event
-→ Trigger Router
-→ Context Builder
-→ Strands Agent
-→ Hatcommways Internal Tool
-→ Structured Proposal
-→ Validation
-→ Domain Service
-
 For external action:
 
-Domain Event / Approved Human Action
-→ Trigger Router
-→ Strands Agent
-→ External Tool Request
-→ Hatcommways Permission Check
+Hatcommways Permission
 → Delegation Check
 → AgentCore Identity
 → AgentCore Gateway
 → External System
-→ Safe Result
-→ Hatcommways Audit / State Update
+
+An external result becomes Hatcommways state only through the applicable validation and domain-service transaction.
 
 Across both paths, AgentCore Observability, Hatcommways Application Observability, and Hatcommways Product Audit provide complementary visibility.
 
