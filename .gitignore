@@ -48,3 +48,5 @@ Desktop.ini
 # Codex workspace artifacts
 work/
 outputs/
+
+.local-aws/
