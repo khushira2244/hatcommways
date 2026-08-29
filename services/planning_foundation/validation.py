@@ -8,7 +8,8 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .errors import ValidationError
-from .models import EventSnapshot, ProposalCreate, StageSnapshot
+from .actor_requirement_validation import ActorRequirementValidator
+from .models import EventSnapshot, ProposalCreate, StageSnapshot, WorkSnapshot
 from .stage_validation import StagePlanValidator
 from .work_validation import WorkDecompositionValidator
 
@@ -45,13 +46,30 @@ class ProposalValidator:
     EVENT_UPDATE = "EVENT_UPDATE"
     STAGE_PLAN = "STAGE_PLAN"
     WORK_DECOMPOSITION = "WORK_DECOMPOSITION"
+    ACTOR_REQUIREMENT = "ACTOR_REQUIREMENT"
 
     def validate_for_storage(
         self,
         command: ProposalCreate,
         event: EventSnapshot | None = None,
         stage: StageSnapshot | None = None,
+        work: WorkSnapshot | None = None,
     ) -> dict[str, Any]:
+        if command.proposal_type == self.ACTOR_REQUIREMENT:
+            if command.target_type != "WORK":
+                raise ValidationError("ACTOR_REQUIREMENT must target WORK")
+            if set(command.base_versions) != {"event", "stage", "work"}:
+                raise ValidationError(
+                    "ACTOR_REQUIREMENT requires event, stage, and work base versions"
+                )
+            if event is None or stage is None or work is None:
+                raise ValidationError(
+                    "ACTOR_REQUIREMENT validation requires current event, stage, and work"
+                )
+            proposal = ActorRequirementValidator().parse_and_validate(
+                command.payload, event, stage, work
+            )
+            return proposal.model_dump(mode="json")
         if command.proposal_type == self.WORK_DECOMPOSITION:
             if command.target_type != "STAGE":
                 raise ValidationError("WORK_DECOMPOSITION must target STAGE")

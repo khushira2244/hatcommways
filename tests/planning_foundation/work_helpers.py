@@ -10,6 +10,7 @@ from services.planning_foundation.models import (
     WorkDecompositionProposal,
 )
 from services.planning_foundation.stage_planning_service import StagePlanningService
+from services.planning_foundation.work_design_service import WorkDesignService
 from tests.planning_foundation.conftest import create_event
 
 
@@ -102,3 +103,32 @@ def work_plan_payload(event, stage, proposal_id=None):
 
 def make_work_proposal(event, stage):
     return WorkDecompositionProposal.model_validate(work_plan_payload(event, stage))
+
+
+def create_approved_work(database, base_service, organizer_id):
+    event, stages = create_approved_stages(database, base_service, organizer_id)
+    stage = stages[0]
+    work_service = WorkDesignService(database)
+    request = work_service.request_work_design(
+        event_id=event.id,
+        stage_id=stage.id,
+        organizer_id=organizer_id,
+        expected_event_version=event.version,
+        expected_stage_version=stage.version,
+        idempotency_key=f"work-request-{uuid4()}",
+    )
+    work_service.begin_request(request.id)
+    proposal = make_work_proposal(event, stage)
+    completed = work_service.complete_request(request.id, proposal)
+    work_service.decide_work_decomposition(
+        ProposalDecisionCommand(
+            proposal_id=completed.proposal_id,
+            organizer_id=organizer_id,
+            decision=ProposalDecision.APPROVE,
+            decision_idempotency_key=f"work-approval-{uuid4()}",
+        )
+    )
+    current_event = base_service.get_event(event.id)
+    current_stage = work_service.get_stage(stage.id)
+    work = work_service.list_work(stage.id)
+    return current_event, current_stage, work, stages[1]

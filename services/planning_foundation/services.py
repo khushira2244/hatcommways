@@ -26,6 +26,7 @@ from .models import (
     ProposalSnapshot,
     ProposalStatus,
     StageSnapshot,
+    WorkSnapshot,
 )
 from .validation import ProposalValidator
 
@@ -113,7 +114,12 @@ class PlanningService:
     def store_proposal(self, command: ProposalCreate) -> ProposalSnapshot:
         with self.database.connect() as connection:
             stage = None
-            if command.target_type == "STAGE":
+            work = None
+            if command.target_type == "WORK":
+                work = self._lock_work(connection, command.target_id)
+                stage = self._lock_stage(connection, work["stage_id"])
+                event = self._lock_event(connection, work["event_id"])
+            elif command.target_type == "STAGE":
                 stage = self._lock_stage(connection, command.target_id)
                 event = self._lock_event(connection, stage["event_id"])
             else:
@@ -122,16 +128,23 @@ class PlanningService:
                 raise StaleProposalError("proposal base event version is stale")
             if stage is not None and stage["version"] != command.base_versions["stage"]:
                 raise StaleProposalError("proposal base stage version is stale")
+            if work is not None and work["version"] != command.base_versions["work"]:
+                raise StaleProposalError("proposal base work version is stale")
             normalized_payload = self.validator.validate_for_storage(
                 command,
                 EventSnapshot.model_validate(event),
                 StageSnapshot.model_validate({**stage, "dependency_stage_ids": []})
                 if stage is not None
                 else None,
+                WorkSnapshot.model_validate({**work, "dependency_work_ids": []})
+                if work is not None
+                else None,
             )
             proposal_id = (
                 UUID(normalized_payload["proposal_id"])
-                if command.proposal_type in {"STAGE_PLAN", "WORK_DECOMPOSITION"}
+                if command.proposal_type in {
+                    "STAGE_PLAN", "WORK_DECOMPOSITION", "ACTOR_REQUIREMENT"
+                }
                 else uuid4()
             )
             try:
@@ -331,6 +344,15 @@ class PlanningService:
         ).fetchone()
         if row is None:
             raise NotFoundError("stage not found")
+        return row
+
+    @staticmethod
+    def _lock_work(connection: Connection, work_id: UUID) -> dict[str, Any]:
+        row = connection.execute(
+            "SELECT * FROM work_items WHERE id = %s FOR UPDATE", (work_id,)
+        ).fetchone()
+        if row is None:
+            raise NotFoundError("work item not found")
         return row
 
     @staticmethod

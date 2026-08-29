@@ -330,3 +330,132 @@ class StageWorkContext(BaseModel):
     stage_start: datetime
     stage_end: datetime
     stage_version: int
+
+
+class ProposedActorRequirement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role_category: str = Field(min_length=1, max_length=100)
+    canonical_role_name: str = Field(min_length=1, max_length=200)
+    responsibility_summary: str = Field(min_length=1, max_length=2000)
+    minimum_required_count: int = Field(ge=0, le=100000)
+    relevant_capabilities: list[str] = Field(default_factory=list, max_length=50)
+    rough_effort_expectation: str = Field(min_length=1, max_length=1000)
+    rationale: str = Field(min_length=1, max_length=2000)
+
+    @field_validator(
+        "role_category", "canonical_role_name", "responsibility_summary",
+        "rough_effort_expectation", "rationale",
+    )
+    @classmethod
+    def reject_blank_requirement_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+    @field_validator("relevant_capabilities")
+    @classmethod
+    def normalize_capabilities(cls, values: list[str]) -> list[str]:
+        normalized = [value.strip() for value in values]
+        if any(not value for value in normalized):
+            raise ValueError("capabilities must not be blank")
+        if len({value.casefold() for value in normalized}) != len(normalized):
+            raise ValueError("capabilities must be unique")
+        return normalized
+
+
+class ActorRequirementProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    proposal_id: UUID
+    event_id: UUID
+    stage_id: UUID
+    work_id: UUID
+    base_event_version: int = Field(ge=1)
+    base_stage_version: int = Field(ge=1)
+    base_work_version: int = Field(ge=1)
+    proposed_requirements: list[ProposedActorRequirement]
+    assumptions: list[str] = Field(default_factory=list)
+    concise_rationale: str = Field(min_length=1, max_length=4000)
+    approval_required: bool
+
+    @field_validator("concise_rationale")
+    @classmethod
+    def reject_blank_actor_rationale(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+
+class ActorRequirementSnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    event_id: UUID
+    stage_id: UUID
+    work_id: UUID
+    role_category: str
+    canonical_role_name: str
+    responsibility_summary: str
+    minimum_required_count: int
+    relevant_capabilities: list[str]
+    rough_effort_expectation: str
+    rationale: str
+    version: int
+    source_proposal_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class ActorRequirementRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    event_id: UUID
+    stage_id: UUID
+    work_id: UUID
+    organizer_id: UUID
+    base_event_version: int
+    base_stage_version: int
+    base_work_version: int
+    status: PlanningRequestStatus
+    idempotency_key: str
+    correlation_id: UUID
+    proposal_id: UUID | None
+    failure_code: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ActorRequirementDecisionResult(BaseModel):
+    proposal_id: UUID
+    status: ProposalStatus
+    requirements: list[ActorRequirementSnapshot] = Field(default_factory=list)
+    event_version: int | None = None
+    stage_version: int | None = None
+    work_version: int | None = None
+    duplicate: bool = False
+
+
+class WorkActorContext(BaseModel):
+    """Allowlisted facts for one authoritative work item and its ancestors."""
+
+    event_id: UUID
+    event_name: str
+    event_purpose: str
+    event_type: str
+    event_version: int
+    stage_id: UUID
+    stage_name: str
+    stage_purpose: str
+    stage_version: int
+    work_id: UUID
+    work_name: str
+    work_purpose: str
+    estimated_person_hours: float
+    work_share: float
+    work_start: datetime
+    work_end: datetime
+    work_version: int
