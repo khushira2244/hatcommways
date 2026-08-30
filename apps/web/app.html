@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Home — Hatcommways</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./auth.css" />
+  </head>
+  <body>
+    <div class="page-shell app-shell" id="app-content" hidden>
+      <header class="site-header app-header">
+        <a class="brand" href="./index.html" aria-label="Hatcommways home">
+          <svg class="brand__mark" viewBox="0 0 44 44" aria-hidden="true"><path d="M22 5.5 35.7 13v16L22 36.5 8.3 29V13L22 5.5Z"/><circle cx="22" cy="13" r="4.2"/><circle cx="14.5" cy="25.6" r="4.2"/><circle cx="29.5" cy="25.6" r="4.2"/></svg>
+          <span>Hatcommways</span>
+        </a>
+        <nav class="app-nav" aria-label="Authenticated navigation">
+          <span aria-disabled="true">My Events</span>
+          <span aria-disabled="true">Create Event</span>
+        </nav>
+        <div class="account-menu">
+          <button id="account-trigger" class="account-menu__button" type="button" aria-expanded="false" aria-controls="account-panel">Account</button>
+          <div class="account-menu__panel" id="account-panel" hidden>
+            <strong id="account-name"></strong><span id="account-email"></span><span class="account-type" id="account-type"></span>
+            <button class="signout-button" id="signout" type="button">Sign out</button>
+          </div>
+        </div>
+      </header>
+      <main class="temporary-home"><h1>Welcome, <span id="welcome-name"></span>.</h1><p>Your account is ready. Event features will be added in the next build phase.</p></main>
+    </div>
+    <script src="./auth.js" defer></script>
+  </body>
+</html>

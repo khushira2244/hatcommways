@@ -77,6 +77,17 @@ a {
 .brand__mark circle:nth-of-type(2) { fill: #3378d1; }
 .brand__mark circle:nth-of-type(3) { fill: var(--green); }
 
+.header-link {
+  color: var(--ink);
+  font-weight: 700;
+  padding: 10px 4px;
+}
+
+.header-link:hover,
+.header-link:focus-visible {
+  color: var(--green-dark);
+}
+
 .button {
   min-height: 54px;
   padding: 0 25px;

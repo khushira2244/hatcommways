@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
 from services.auth.authorization import AccountAuthorizationService
@@ -87,6 +88,13 @@ class DecisionBody(BaseModel):
 
 def create_app(database: Database) -> FastAPI:
     app = FastAPI(title="Hatcommways API", version="0.1.0")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://127.0.0.1:4173", "http://localhost:4173"],
+        allow_credentials=False,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
     auth = AuthService(database)
     authorization = AccountAuthorizationService(database)
     stage_service = StagePlanningService(database)
