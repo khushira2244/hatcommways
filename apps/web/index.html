@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Hatcommways helps communities plan events, coordinate work, and stay aligned as responsibilities change."
+    />
+    <title>Hatcommways — Coordinate community action</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="site-header" aria-label="Primary navigation">
+        <a class="brand" href="#" aria-label="Hatcommways home">
+          <svg class="brand__mark" viewBox="0 0 44 44" aria-hidden="true">
+            <path d="M22 5.5 35.7 13v16L22 36.5 8.3 29V13L22 5.5Z" />
+            <circle cx="22" cy="13" r="4.2" />
+            <circle cx="14.5" cy="25.6" r="4.2" />
+            <circle cx="29.5" cy="25.6" r="4.2" />
+          </svg>
+          <span>Hatcommways</span>
+        </a>
+
+        <a class="button button--small button--primary" href="#signup">Sign up</a>
+      </header>
+
+      <main>
+        <section class="hero" aria-labelledby="hero-title">
+          <div class="hero__content">
+            <p class="eyebrow"><span aria-hidden="true"></span> Community action, coordinated</p>
+            <h1 id="hero-title">Coordinate community action <em>without the chaos.</em></h1>
+            <p class="hero__summary">
+              Hatcommways helps organizers, participants, and supporters plan events,
+              manage stages of work, and stay aligned as things change.
+            </p>
+
+            <div class="hero__actions" id="signup">
+              <a class="button button--primary" href="#signup">
+                Sign up
+                <svg viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="m7 4 6 6-6 6" />
+                </svg>
+              </a>
+              <a class="button button--secondary" href="#events-preview">Explore events</a>
+            </div>
+
+            <p class="hero__note">
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M10 2.5 16 5v4.6c0 3.7-2.5 6.3-6 7.9-3.5-1.6-6-4.2-6-7.9V5l6-2.5Z" />
+                <path d="m7.5 10 1.6 1.7 3.5-3.8" />
+              </svg>
+              Built for people doing meaningful work together.
+            </p>
+          </div>
+
+          <div class="hero__visual" id="events-preview" role="img" aria-label="A preview of a coordinated community event plan">
+            <div class="visual-glow" aria-hidden="true"></div>
+            <div class="event-card">
+              <div class="event-card__topline">
+                <div>
+                  <span class="event-card__label">COMMUNITY EVENT</span>
+                  <h2>Neighbourhood garden day</h2>
+                </div>
+                <span class="event-card__status"><i></i> On track</span>
+              </div>
+
+              <div class="event-card__progress" aria-hidden="true">
+                <span></span>
+              </div>
+
+              <div class="event-card__meta">
+                <div><strong>3</strong><span>work stages</span></div>
+                <div><strong>24</strong><span>people involved</span></div>
+                <div><strong>Sat</strong><span>next action</span></div>
+              </div>
+
+              <div class="event-card__stages">
+                <article class="stage-row stage-row--done">
+                  <span class="stage-row__icon">✓</span>
+                  <div><strong>Prepare the space</strong><small>Completed</small></div>
+                  <span class="stage-row__people" aria-label="Six people">6 people</span>
+                </article>
+                <article class="stage-row stage-row--active">
+                  <span class="stage-row__icon">02</span>
+                  <div><strong>Planting &amp; setup</strong><small>In progress</small></div>
+                  <span class="stage-row__people" aria-label="Twelve people">12 people</span>
+                </article>
+                <article class="stage-row">
+                  <span class="stage-row__icon">03</span>
+                  <div><strong>Share &amp; celebrate</strong><small>Up next</small></div>
+                  <span class="stage-row__people" aria-label="Six people">6 people</span>
+                </article>
+              </div>
+            </div>
+
+            <div class="floating-card floating-card--people" aria-hidden="true">
+              <div class="avatar-stack"><i>AM</i><i>RK</i><i>+8</i></div>
+              <span>People are aligned</span>
+            </div>
+            <div class="floating-card floating-card--update" aria-hidden="true">
+              <span class="update-icon">↗</span>
+              <div><strong>Plan updated</strong><small>Everyone notified</small></div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
