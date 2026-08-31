@@ -104,7 +104,8 @@ async function initializeApp() {
     document.querySelector("#account-name").textContent = account.display_name;
     document.querySelector("#account-email").textContent = account.email;
     document.querySelector("#account-type").textContent = `${accountLabel} account`;
-    document.querySelector("#welcome-name").textContent = account.display_name;
+    const welcomeName = document.querySelector("#welcome-name");
+    if (welcomeName) welcomeName.textContent = account.display_name;
     document.querySelector("#app-content").hidden = false;
     initializeDiscovery();
   } catch {

@@ -14,4 +14,4 @@ if not database_url:
 
 database = Database(database_url)
 database.apply_schema()
-app = create_app(database)
+app = create_app(database, execute_planning_requests=True)

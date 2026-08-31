@@ -61,6 +61,14 @@ a {
   letter-spacing: -0.04em;
 }
 
+.brand-logo {
+  display: block;
+  width: clamp(180px, 18vw, 260px);
+  height: 58px;
+  object-fit: contain;
+  object-position: left center;
+}
+
 .brand__mark {
   width: 38px;
   height: 38px;

@@ -23,6 +23,7 @@ from services.auth.models import (
     SignUpRequest,
 )
 from services.auth.service import AuthService
+from services.agent_runtime.event_planning import EventPlanningWorkflow, StrandsEventPlanningAgent
 from services.planning_foundation.actor_requirement_service import ActorRequirementService
 from services.planning_foundation.database import Database
 from services.planning_foundation.errors import (
@@ -40,6 +41,7 @@ from services.planning_foundation.models import (
 )
 from services.planning_foundation.stage_planning_service import StagePlanningService
 from services.planning_foundation.work_design_service import WorkDesignService
+from services.planning_foundation.tools import ScopedPlanningReadTools
 
 
 class EventCreateRequest(BaseModel):
@@ -86,7 +88,7 @@ class DecisionBody(BaseModel):
     edited_payload: dict[str, Any] | None = None
 
 
-def create_app(database: Database) -> FastAPI:
+def create_app(database: Database, *, execute_planning_requests: bool = False) -> FastAPI:
     app = FastAPI(title="Hatcommways API", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,
@@ -98,6 +100,10 @@ def create_app(database: Database) -> FastAPI:
     auth = AuthService(database)
     authorization = AccountAuthorizationService(database)
     stage_service = StagePlanningService(database)
+    stage_workflow = EventPlanningWorkflow(
+        stage_service,
+        StrandsEventPlanningAgent(ScopedPlanningReadTools(stage_service.base)),
+    )
     work_service = WorkDesignService(database)
     actor_service = ActorRequirementService(database)
     bearer = HTTPBearer(auto_error=False)
@@ -196,12 +202,15 @@ def create_app(database: Database) -> FastAPI:
         session: AuthenticatedSession = Depends(authenticated),
     ):
         authorization.require_active_organizer(event_id, session.account.id)
-        return stage_service.request_event_planning(
+        planning_request = stage_service.request_event_planning(
             event_id=event_id,
             organizer_id=session.account.id,
             expected_event_version=body.expected_event_version,
             idempotency_key=body.idempotency_key,
         )
+        if execute_planning_requests and planning_request.status.value == "REQUESTED":
+            stage_workflow.execute(planning_request.id)
+        return stage_service.get_request(planning_request.id)
 
     @app.post("/stage-proposals/{proposal_id}/decision")
     def decide_stage_plan(
