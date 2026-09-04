@@ -24,6 +24,7 @@ from services.auth.models import (
 )
 from services.auth.service import AuthService
 from services.agent_runtime.event_planning import EventPlanningWorkflow, StrandsEventPlanningAgent
+from services.agent_runtime.work_design import WorkDesignWorkflow, StrandsWorkDesignAgent
 from services.planning_foundation.actor_requirement_service import ActorRequirementService
 from services.planning_foundation.database import Database
 from services.planning_foundation.errors import (
@@ -107,6 +108,10 @@ def create_app(database: Database, *, execute_planning_requests: bool = False) -
         StrandsEventPlanningAgent(ScopedPlanningReadTools(stage_service.base)),
     )
     work_service = WorkDesignService(database)
+    work_workflow = WorkDesignWorkflow(
+        work_service,
+        StrandsWorkDesignAgent(ScopedPlanningReadTools(work_service.base)),
+    )
     actor_service = ActorRequirementService(database)
     bearer = HTTPBearer(auto_error=False)
 
@@ -265,7 +270,7 @@ def create_app(database: Database, *, execute_planning_requests: bool = False) -
         session: AuthenticatedSession = Depends(authenticated),
     ):
         authorization.require_active_organizer(body.event_id, session.account.id)
-        return work_service.request_work_design(
+        work_request = work_service.request_work_design(
             event_id=body.event_id,
             stage_id=stage_id,
             organizer_id=session.account.id,
@@ -273,6 +278,9 @@ def create_app(database: Database, *, execute_planning_requests: bool = False) -
             expected_stage_version=body.expected_stage_version,
             idempotency_key=body.idempotency_key,
         )
+        if execute_planning_requests and work_request.status.value == "REQUESTED":
+            work_workflow.execute(work_request.id)
+        return work_service.get_request(work_request.id)
 
     @app.get("/events/{event_id}/stages/{stage_id}/work-design-workspace")
     def get_work_design_workspace(

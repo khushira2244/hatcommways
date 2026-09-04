@@ -5,12 +5,14 @@ from uuid import UUID
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError as PydanticValidationError
+from psycopg.types.json import Jsonb
 
 from services.api import create_app
 from services.planning_foundation.errors import AuthorizationError
 from services.planning_foundation.models import EventPlanningContext
 from services.planning_foundation.tools import ScopedPlanningReadTools
 from tests.planning_foundation.conftest import make_event_command
+from tests.planning_foundation.work_helpers import create_approved_stages
 
 
 PASSWORD = "correct horse battery staple"
@@ -87,6 +89,21 @@ def test_context_persists_and_scoped_brief_exposes_authoritative_values(service,
 def test_legacy_event_without_context_remains_readable(service, organizer_id):
     event = service.create_event(make_event_command(organizer_id), idempotency_key="legacy")
     assert service.get_event(event.id).planning_context is None
+
+
+def test_work_design_scoped_context_receives_authoritative_theme(database, service, organizer_id):
+    event, stages = create_approved_stages(database, service, organizer_id)
+    with database.connect() as connection:
+        connection.execute(
+            "UPDATE events SET planning_context=%s WHERE id=%s",
+            (Jsonb({"detailed_purpose": "Prepare the community action", "theme": "Festival / Celebration"}), event.id),
+        )
+    context = ScopedPlanningReadTools(service).get_stage_work_context(
+        event_id=event.id, stage_id=stages[0].id, organizer_id=organizer_id,
+        expected_event_version=event.version, expected_stage_version=stages[0].version,
+    )
+    assert context.naming_theme.value == "Festival / Celebration"
+    assert context.custom_naming_style is None
 
 
 def test_real_api_persists_context_and_planning_request_does_not_accept_browser_copy(database):

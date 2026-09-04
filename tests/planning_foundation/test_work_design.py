@@ -124,6 +124,7 @@ def test_scoped_tool_exposes_only_target_stage(database, service, organizer_id):
     assert context.stage_id != stages[1].id
     assert set(context.model_dump()) == {
         "event_id", "event_name", "event_purpose", "event_type", "event_version",
+        "naming_theme", "custom_naming_style",
         "stage_id", "stage_name", "stage_purpose", "stage_start", "stage_end",
         "stage_version",
     }

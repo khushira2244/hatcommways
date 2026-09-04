@@ -109,7 +109,10 @@ class StrandsWorkDesignAgent:
                 "estimated_person_hours / total estimated_person_hours for all proposed "
                 "work in this stage * 100. Round work_share to two decimal places; the "
                 "shares must total approximately 100. Never claim confirmed people, "
-                "resources, equipment, materials, venues, permissions, or sponsors. Return "
+                "resources, equipment, materials, venues, permissions, or sponsors. "
+                "Use naming_theme and custom_naming_style only for work display vocabulary; "
+                "they must not change canonical meaning, effort, timing, dependencies, "
+                "permissions, IDs, approval, or authoritative state rules. Return "
                 "only the typed WorkDecompositionProposal."
             ),
         )

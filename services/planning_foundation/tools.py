@@ -52,7 +52,10 @@ class ScopedPlanningReadTools:
                 """
                 SELECT e.id AS event_id, e.organizer_id,
                        e.name AS event_name, e.purpose AS event_purpose,
-                       e.event_type, e.version AS event_version,
+                       e.event_type,
+                       e.planning_context->>'theme' AS naming_theme,
+                       e.planning_context->>'custom_theme' AS custom_naming_style,
+                       e.version AS event_version,
                        s.id AS stage_id, s.canonical_name AS stage_name,
                        s.purpose AS stage_purpose, s.starts_at AS stage_start,
                        s.ends_at AS stage_end, s.version AS stage_version

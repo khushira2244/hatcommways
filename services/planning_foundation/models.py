@@ -399,6 +399,8 @@ class StageWorkContext(BaseModel):
     event_name: str
     event_purpose: str
     event_type: str
+    naming_theme: NamingTheme | None = None
+    custom_naming_style: str | None = None
     event_version: int
     stage_id: UUID
     stage_name: str
