@@ -214,6 +214,35 @@ def create_app(database: Database, *, execute_planning_requests: bool = False) -
             stage_workflow.execute(planning_request.id)
         return stage_service.get_request(planning_request.id)
 
+    @app.get("/events/{event_id}/stage-plan-workspace")
+    def get_stage_plan_workspace(
+        event_id: UUID,
+        session: AuthenticatedSession = Depends(authenticated),
+    ):
+        authorization.require_active_organizer(event_id, session.account.id)
+        event = stage_service.base.get_event(event_id)
+        stages = stage_service.list_stages(event_id)
+        with database.connect() as connection:
+            request = connection.execute(
+                """
+                SELECT * FROM event_planning_requests
+                WHERE event_id=%s AND proposal_id IS NOT NULL
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                (event_id,),
+            ).fetchone()
+        proposal = (
+            stage_service.base.get_proposal(request["proposal_id"])
+            if request is not None else None
+        )
+        return {
+            "mode": "CONFIRMED" if stages else "PROPOSAL",
+            "event": event,
+            "planning_request": request,
+            "proposal": proposal,
+            "stages": stages,
+        }
+
     @app.post("/stage-proposals/{proposal_id}/decision")
     def decide_stage_plan(
         proposal_id: UUID,
@@ -244,6 +273,50 @@ def create_app(database: Database, *, execute_planning_requests: bool = False) -
             expected_stage_version=body.expected_stage_version,
             idempotency_key=body.idempotency_key,
         )
+
+    @app.get("/events/{event_id}/stages/{stage_id}/work-design-workspace")
+    def get_work_design_workspace(
+        event_id: UUID,
+        stage_id: UUID,
+        session: AuthenticatedSession = Depends(authenticated),
+    ):
+        authorization.require_active_organizer(event_id, session.account.id)
+        event = work_service.base.get_event(event_id)
+        stage = work_service.get_stage(stage_id)
+        if stage.event_id != event_id:
+            raise NotFoundError("stage is not part of this event")
+        stages = stage_service.list_stages(event_id)
+        work = work_service.list_work(stage_id)
+        with database.connect() as connection:
+            request = connection.execute(
+                """
+                SELECT * FROM work_design_requests
+                WHERE event_id=%s AND stage_id=%s
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                (event_id, stage_id),
+            ).fetchone()
+        proposal = (
+            work_service.base.get_proposal(request["proposal_id"])
+            if request is not None and request["proposal_id"] is not None else None
+        )
+        if work:
+            mode = "CONFIRMED"
+        elif proposal is not None and proposal.status.value == "PENDING":
+            mode = "PROPOSAL"
+        elif request is not None:
+            mode = request["status"]
+        else:
+            mode = "EMPTY"
+        return {
+            "mode": mode,
+            "event": event,
+            "stages": stages,
+            "selected_stage": stage,
+            "work_design_request": request,
+            "proposal": proposal,
+            "work": work,
+        }
 
     @app.post("/work-proposals/{proposal_id}/decision")
     def decide_work(
