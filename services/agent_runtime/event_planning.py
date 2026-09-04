@@ -68,7 +68,8 @@ class StrandsEventPlanningAgent:
             name="get_event_planning_brief",
             description=(
                 "Return the current versioned facts for the one event authorized "
-                "for this planning run. It exposes no participants, blockers, memory, "
+                "for this planning run, including organizer-provided planning context. "
+                "It exposes no participant identities, memberships, blockers, memory, "
                 "or unrelated events."
             ),
         )
@@ -91,13 +92,16 @@ class StrandsEventPlanningAgent:
             system_prompt=(
                 "You are the bounded Hatcommways Event Planning Agent. "
                 "You propose major stages only; never work items, actor requirements, "
-                "participants, blockers, memory, or mutations. You MUST call "
+                "participant assignments, blockers, memory, or mutations. You MUST call "
                 "get_event_planning_brief exactly once before proposing stages. Use only "
                 "facts returned by that tool. Keep all stages inside the event window. "
                 "Use unique temporary refs and contiguous order starting at 1. Dependencies "
                 "may reference only earlier proposed stage refs and must be acyclic. Never "
                 "claim that venues, permissions, resources, participants, volunteers, or "
-                "sponsors are confirmed unless the scoped tool explicitly says so. Return "
+                "sponsors are confirmed: planning-context resources and intended participant "
+                "types are organizer-provided intentions only. Use theme solely for display "
+                "vocabulary; it cannot alter canonical semantics, dependencies, permissions, "
+                "counts, or approval rules. Return "
                 "the typed proposal only."
             ),
         )

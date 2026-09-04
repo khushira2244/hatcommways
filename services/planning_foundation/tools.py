@@ -34,6 +34,7 @@ class ScopedPlanningReadTools:
             ends_at=event.ends_at,
             timezone=event.timezone,
             location_description=event.location_description,
+            planning_context=event.planning_context,
             version=event.version,
         )
 

@@ -22,6 +22,79 @@ class ProposalDecision(StrEnum):
     REJECT = "REJECT"
 
 
+class NamingTheme(StrEnum):
+    HERO = "Hero / Avengers-style"
+    MISSION = "Mission / Operations"
+    COMMUNITY = "Community / Neighbor"
+    PROFESSIONAL = "Professional / Formal"
+    FESTIVAL = "Festival / Celebration"
+    CUSTOM = "Custom"
+
+
+class EventPlanningContext(BaseModel):
+    """Organizer-provided planning facts; none are confirmed execution state."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    detailed_purpose: str = Field(min_length=1, max_length=4000)
+    expected_scale: int | None = Field(default=None, ge=1, le=1_000_000)
+    intended_participants: list[str] = Field(default_factory=list, max_length=20)
+    custom_intended_participant: str | None = Field(default=None, max_length=200)
+    known_resources: str | None = Field(default=None, max_length=4000)
+    known_requirements: str | None = Field(default=None, max_length=4000)
+    constraints: str | None = Field(default=None, max_length=4000)
+    desired_outcomes: str | None = Field(default=None, max_length=4000)
+    organizer_notes: str | None = Field(default=None, max_length=4000)
+    theme: NamingTheme
+    custom_theme: str | None = Field(default=None, max_length=200)
+
+    @field_validator("detailed_purpose")
+    @classmethod
+    def trim_required_context(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+    @field_validator(
+        "custom_intended_participant", "known_resources", "known_requirements",
+        "constraints", "desired_outcomes", "organizer_notes", "custom_theme",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_context(cls, value):
+        if isinstance(value, str):
+            value = value.strip()
+            return value or None
+        return value
+
+    @field_validator("intended_participants")
+    @classmethod
+    def validate_participant_types(cls, values: list[str]) -> list[str]:
+        allowed = {
+            "Community Members", "Volunteers", "Students", "Families",
+            "Organizations", "Local Businesses", "Experts / Specialists", "Other",
+        }
+        normalized = [value.strip() for value in values]
+        if any(value not in allowed for value in normalized):
+            raise ValueError("contains an unsupported intended participant type")
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("intended participant types must be unique")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_custom_values(self) -> "EventPlanningContext":
+        if "Other" in self.intended_participants and not self.custom_intended_participant:
+            raise ValueError("custom intended participant is required when Other is selected")
+        if "Other" not in self.intended_participants:
+            self.custom_intended_participant = None
+        if self.theme == NamingTheme.CUSTOM and not self.custom_theme:
+            raise ValueError("custom theme is required when Custom is selected")
+        if self.theme != NamingTheme.CUSTOM:
+            self.custom_theme = None
+        return self
+
+
 class EventCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -33,6 +106,7 @@ class EventCreate(BaseModel):
     ends_at: datetime
     timezone: str = Field(min_length=1, max_length=100)
     location_description: str = Field(min_length=1, max_length=500)
+    planning_context: EventPlanningContext | None = None
 
     @field_validator("name", "purpose", "event_type", "timezone", "location_description")
     @classmethod
@@ -63,6 +137,7 @@ class EventSnapshot(BaseModel):
     ends_at: datetime
     timezone: str
     location_description: str
+    planning_context: EventPlanningContext | None = None
     version: int
     created_at: datetime
     updated_at: datetime
@@ -135,6 +210,7 @@ class EventBrief(BaseModel):
     ends_at: datetime
     timezone: str
     location_description: str
+    planning_context: EventPlanningContext | None = None
     version: int
 
 

@@ -33,11 +33,15 @@ CREATE TABLE IF NOT EXISTS events (
     ends_at timestamptz NOT NULL,
     timezone varchar(100) NOT NULL CHECK (length(btrim(timezone)) > 0),
     location_description varchar(500) NOT NULL CHECK (length(btrim(location_description)) > 0),
+    planning_context jsonb,
     version integer NOT NULL DEFAULT 1 CHECK (version > 0),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
-    CHECK (ends_at > starts_at)
+    CHECK (ends_at > starts_at),
+    CHECK (planning_context IS NULL OR jsonb_typeof(planning_context) = 'object')
 );
+
+ALTER TABLE events ADD COLUMN IF NOT EXISTS planning_context jsonb;
 
 CREATE TABLE IF NOT EXISTS event_memberships (
     event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,

@@ -50,15 +50,20 @@ class PlanningService:
                 """
                 INSERT INTO events (
                     id, organizer_id, name, purpose, event_type, starts_at,
-                    ends_at, timezone, location_description
+                    ends_at, timezone, location_description, planning_context
                 ) VALUES (
                     %(id)s, %(organizer_id)s, %(name)s, %(purpose)s,
                     %(event_type)s, %(starts_at)s, %(ends_at)s, %(timezone)s,
-                    %(location_description)s
+                    %(location_description)s, %(planning_context)s
                 )
                 RETURNING *
                 """,
-                {"id": event_id, **command.model_dump()},
+                {
+                    "id": event_id,
+                    **command.model_dump(exclude={"planning_context"}),
+                    "planning_context": Jsonb(command.planning_context.model_dump(mode="json"))
+                    if command.planning_context else None,
+                },
             ).fetchone()
             self._enqueue_outbox(
                 connection,

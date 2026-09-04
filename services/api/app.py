@@ -36,6 +36,7 @@ from services.planning_foundation.errors import (
 )
 from services.planning_foundation.models import (
     EventCreate,
+    EventPlanningContext,
     ProposalDecision,
     ProposalDecisionCommand,
 )
@@ -54,6 +55,7 @@ class EventCreateRequest(BaseModel):
     ends_at: datetime
     timezone: str = Field(min_length=1, max_length=100)
     location_description: str = Field(min_length=1, max_length=500)
+    planning_context: EventPlanningContext | None = None
     idempotency_key: str = Field(min_length=1, max_length=200)
 
 

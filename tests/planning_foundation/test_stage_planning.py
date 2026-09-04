@@ -95,7 +95,7 @@ def test_planning_request_precheck_and_scoped_tool(database, service, organizer_
     )
     assert set(brief.model_dump()) == {
         "event_id", "name", "purpose", "event_type", "starts_at", "ends_at",
-        "timezone", "location_description", "version",
+        "timezone", "location_description", "planning_context", "version",
     }
     with pytest.raises(AuthorizationError):
         stage_service.request_event_planning(
