@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Event Setup &amp; Settings — Hatcommways</title>
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./event-setup.css">
+</head>
+<body>
+  <div id="setup-page" hidden>
+    <header class="setup-header">
+      <a href="./app.html"><img src="./hatcommways-logo.png" alt="Hatcommways"></a>
+      <nav><a href="./app.html">Explore</a><a href="./my-events.html">My Events</a><a href="./create-event.html">Create Event</a></nav>
+      <div class="setup-account"><span id="setup-avatar"></span><div><strong id="setup-account-name"></strong><small id="setup-account-type"></small></div></div>
+    </header>
+    <main class="setup-page">
+      <header class="setup-title"><span>⚙</span><div><h1>Event Setup &amp; Settings</h1><p>Configure event details. These settings remain editable later.</p></div></header>
+      <div class="setup-layout">
+        <form id="setup-form" class="setup-grid">
+          <section class="setup-card"><header><div><h2>1. Initial Invites</h2><p>Draft contacts only. No account or membership is created.</p></div><button type="button" data-add="invite">＋ Add Person</button></header><div id="invite-list" class="entry-list"></div></section>
+          <section class="setup-card"><header><div><h2>2. Sponsors &amp; Support</h2><p>Organizer-configured recognition and support entries.</p></div><button type="button" data-add="support">＋ Add Support</button></header><div id="support-list" class="entry-list"></div></section>
+          <section class="setup-card"><header><div><h2>3. Resources</h2><p>Event-level needs only; no contributor commitments.</p></div><button type="button" data-add="resource">＋ Add Resource</button></header><div id="resource-list" class="entry-list"></div></section>
+          <section class="setup-card"><header><div><h2>4. Payment / Contribution Links</h2><p>External links only. Hatcommways does not process payments.</p></div><button type="button" data-add="link">＋ Add Link</button></header><div id="link-list" class="entry-list"></div></section>
+          <section class="setup-card"><header><div><h2>5. Map Settings</h2><p>Choose safe event map layers.</p></div></header><label class="toggle"><input id="map-enabled" type="checkbox"> Enable event map</label><label>Default view<input id="default-view" maxlength="100" placeholder="e.g. CITY"></label><fieldset><legend>Participation dimensions</legend><div class="toggle-grid"><label><input type="checkbox" name="dimension" value="AREA"> Area</label><label><input type="checkbox" name="dimension" value="ROLE"> Role</label><label><input type="checkbox" name="dimension" value="ORGANIZATION"> Organization</label><label><input type="checkbox" name="dimension" value="PROFESSION"> Profession</label></div></fieldset></section>
+          <section class="setup-card"><header><div><h2>6. Privacy Settings</h2><p>Control visibility without exposing sensitive dimensions.</p></div></header><label>Event visibility<select id="event-visibility"><option>PUBLIC</option><option>UNLISTED</option><option>PRIVATE</option></select></label><div class="privacy-grid"><label><input id="show-counts" type="checkbox"> Show participant counts</label><label><input id="show-tree" type="checkbox"> Show actor tree</label><label><input id="show-sponsors" type="checkbox"> Show sponsors</label><label><input id="show-resources" type="checkbox"> Show resources</label><label><input id="show-links" type="checkbox"> Show payment links</label></div></section>
+        </form>
+        <aside class="setup-sidebar"><section><h2>Event Summary</h2><strong id="setup-event-name"></strong><dl><div><dt>Setup version</dt><dd id="setup-version">0</dd></div><div><dt>Status</dt><dd id="setup-status">Not saved</dd></div></dl></section><p id="setup-message" role="status"></p><button class="save-button" id="save-setup" form="setup-form">Save Settings</button><a class="back-button" id="setup-back">Back to Actor Requirements</a></aside>
+      </div>
+    </main>
+  </div>
+  <script src="./auth.js"></script>
+  <script src="./event-setup.js"></script>
+</body>
+</html>
