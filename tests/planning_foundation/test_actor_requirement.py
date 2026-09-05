@@ -254,6 +254,37 @@ def test_duplicate_approval_applies_once_and_preserves_unrelated_work(
     assert unrelated["version"] == unrelated_stage.version
 
 
+def test_sibling_work_actor_proposals_can_be_confirmed_as_one_stage_structure(
+    database, service, organizer_id
+):
+    event, stage, work, _ = create_approved_work(database, service, organizer_id)
+    actor_service = ActorRequirementService(database)
+    proposal_ids = []
+    for index, target in enumerate(work):
+        request = actor_service.request_actor_requirements(
+            event_id=event.id, stage_id=stage.id, work_id=target.id,
+            organizer_id=organizer_id, expected_event_version=event.version,
+            expected_stage_version=stage.version, expected_work_version=target.version,
+            idempotency_key=f"sibling-actor-request-{index}",
+        )
+        actor_service.begin_request(request.id)
+        proposal = ActorRequirementProposal.model_validate(
+            actor_payload(event, stage, target)
+        )
+        completed = actor_service.complete_request(request.id, proposal)
+        proposal_ids.append(completed.proposal_id)
+
+    results = [
+        actor_service.decide_actor_requirements(
+            decision(proposal_id, organizer_id, ProposalDecision.APPROVE)
+        )
+        for proposal_id in proposal_ids
+    ]
+
+    assert all(result.status == ProposalStatus.APPROVED for result in results)
+    assert [len(actor_service.list_requirements(target.id)) for target in work] == [2, 2]
+
+
 class FailingRuntime:
     def generate(self, **kwargs):
         raise RuntimeError("simulated Bedrock or scoped-tool failure")

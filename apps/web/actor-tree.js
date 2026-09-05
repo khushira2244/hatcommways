@@ -10,6 +10,7 @@ let stagesVisible = true;
 const actorEsc = value => String(value ?? '').replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char]);
 const loadActorTree = () => api(`/events/${actorEventId}/stages/${actorStageId}/actor-tree-workspace`);
 const proposalRequirements = item => item.proposal?.status === 'PENDING' ? item.proposal.payload.proposed_requirements : [];
+const displayedRequirements = item => proposalRequirements(item).length ? proposalRequirements(item) : item.requirements;
 
 async function initializeActorTree() {
   if (!getToken() || !actorEventId || !actorStageId) {
@@ -36,6 +37,7 @@ function renderActorTree() {
   const items = actorData.work_items;
   const requests = items.map(item => item.actor_requirement_request).filter(Boolean);
   const pending = items.flatMap(proposalRequirements);
+  const authoritative = items.flatMap(item => item.requirements);
   const running = requests.some(request => ['REQUESTED', 'RUNNING'].includes(request.status));
   const failed = requests.some(request => request.status === 'FAILED');
   const eventButton = document.querySelector('#event-root');
@@ -44,7 +46,7 @@ function renderActorTree() {
   eventButton.innerHTML = `<strong>${actorEsc(actorData.event.name)}</strong><small>Event</small>`;
   eventButton.setAttribute('aria-expanded', String(stagesVisible));
   document.querySelector('.tree-trunk').hidden = !stagesVisible;
-  document.querySelector('#actor-status').textContent = running ? 'Generating actor requirements' : pending.length ? 'Actor proposal ready' : failed ? 'Generation failed' : 'Not started';
+  document.querySelector('#actor-status').textContent = running ? 'Generating actor requirements' : pending.length ? 'Actor proposal ready' : authoritative.length ? 'Actor structure confirmed' : failed ? 'Generation failed' : 'Not started';
   document.querySelector('#summary-event').textContent = actorData.event.name;
   stageHost.hidden = !stagesVisible;
   stageHost.style.setProperty('--stage-count', actorData.stages.length);
@@ -52,7 +54,7 @@ function renderActorTree() {
 
   actorData.stages.forEach((stage, stageIndex) => {
     const selected = stage.id === activeStageId;
-    const hasRoles = stage.id === actorStageId && pending.length;
+    const hasRoles = stage.id === actorStageId && (pending.length || authoritative.length);
     const branch = document.createElement('section');
     branch.className = `stage-branch${selected ? ' selected' : ''}`;
     branch.style.setProperty('--tree-width', `${actorData.stages.length * 100}%`);
@@ -78,7 +80,7 @@ function renderActorTree() {
       connector.setAttribute('aria-hidden', 'true');
       branch.append(connector);
       const roleList = document.createElement('div');
-      const requirements = items.flatMap(proposalRequirements);
+      const requirements = items.flatMap(displayedRequirements);
       roleList.className = 'role-list';
       roleList.style.setProperty('--role-count', requirements.length);
       requirements.forEach(requirement => {
@@ -102,9 +104,12 @@ function renderActorTree() {
   document.querySelector('#summary-role').textContent = selectedRole?.canonical_role_name || '—';
   document.querySelector('#summary-count').textContent = selectedRole ? Number(selectedRole.minimum_required_count) : '—';
   const button = document.querySelector('#generate-actors');
-  button.hidden = pending.length > 0;
+  button.hidden = pending.length > 0 || authoritative.length > 0;
   button.disabled = running || !items.length;
   if (!items.length) button.title = 'Confirmed work is required before actor requirements can be designed';
+  const confirmButton = document.querySelector('#confirm-actor-structure');
+  confirmButton.hidden = !pending.length;
+  confirmButton.disabled = running;
 }
 
 async function generateActorRequirements() {
@@ -136,12 +141,40 @@ async function generateActorRequirements() {
   }
 }
 
+async function confirmActorStructure() {
+  const button = document.querySelector('#confirm-actor-structure');
+  const proposals = actorData.work_items
+    .map(item => item.proposal)
+    .filter(proposal => proposal?.status === 'PENDING');
+  button.disabled = true;
+  document.querySelector('#actor-message').textContent = '';
+  try {
+    for (const proposal of proposals) {
+      await api(`/actor-requirement-proposals/${proposal.id}/decision`, {
+        method: 'POST',
+        body: JSON.stringify({
+          decision: 'APPROVE',
+          decision_idempotency_key: `actor-approval:${proposal.id}`,
+        }),
+      });
+    }
+    actorData = await loadActorTree();
+    selectedRole = null;
+    renderActorTree();
+  } catch (error) {
+    actorData = await loadActorTree();
+    renderActorTree();
+    showActorError(error);
+  }
+}
+
 function showActorError(error) {
   document.querySelector('#actor-message').textContent = error.message;
   actorRoot.hidden = false;
 }
 
 document.querySelector('#generate-actors').onclick = generateActorRequirements;
+document.querySelector('#confirm-actor-structure').onclick = confirmActorStructure;
 document.querySelector('#event-root').onclick = () => {
   stagesVisible = !stagesVisible;
   selectedRole = null;

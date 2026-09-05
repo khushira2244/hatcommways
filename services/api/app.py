@@ -30,6 +30,8 @@ from services.agent_runtime.actor_requirement import (
     StrandsActorRequirementAgent,
 )
 from services.planning_foundation.actor_requirement_service import ActorRequirementService
+from services.planning_foundation.event_setup_models import EventSetupSnapshot, EventSetupUpdateRequest
+from services.planning_foundation.event_setup_service import EventSetupService
 from services.planning_foundation.database import Database
 from services.planning_foundation.errors import (
     AuthorizationError,
@@ -101,7 +103,7 @@ def create_app(database: Database, *, execute_planning_requests: bool = False) -
         CORSMiddleware,
         allow_origins=["http://127.0.0.1:4173", "http://localhost:4173"],
         allow_credentials=False,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "PUT"],
         allow_headers=["Authorization", "Content-Type"],
     )
     auth = AuthService(database)
@@ -117,6 +119,7 @@ def create_app(database: Database, *, execute_planning_requests: bool = False) -
         StrandsWorkDesignAgent(ScopedPlanningReadTools(work_service.base)),
     )
     actor_service = ActorRequirementService(database)
+    setup_service = EventSetupService(database)
     actor_workflow = ActorRequirementWorkflow(
         actor_service,
         StrandsActorRequirementAgent(ScopedPlanningReadTools(actor_service.base)),
@@ -426,6 +429,23 @@ def create_app(database: Database, *, execute_planning_requests: bool = False) -
                 **body.model_dump(),
             )
         )
+
+    @app.get("/events/{event_id}/setup", response_model=EventSetupSnapshot)
+    def get_event_setup(
+        event_id: UUID,
+        session: AuthenticatedSession = Depends(authenticated),
+    ):
+        authorization.require_active_organizer(event_id, session.account.id)
+        return setup_service.get(event_id, session.account.id)
+
+    @app.put("/events/{event_id}/setup", response_model=EventSetupSnapshot)
+    def update_event_setup(
+        event_id: UUID,
+        body: EventSetupUpdateRequest,
+        session: AuthenticatedSession = Depends(authenticated),
+    ):
+        authorization.require_active_organizer(event_id, session.account.id)
+        return setup_service.update(event_id, session.account.id, body)
 
     return app
 

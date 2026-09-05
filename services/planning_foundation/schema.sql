@@ -63,6 +63,44 @@ CREATE UNIQUE INDEX IF NOT EXISTS event_one_active_organizer_idx
     ON event_memberships (event_id)
     WHERE role = 'ORGANIZER' AND status = 'ACTIVE';
 
+CREATE TABLE IF NOT EXISTS event_setups (
+    event_id uuid PRIMARY KEY REFERENCES events(id) ON DELETE CASCADE,
+    initial_invites jsonb NOT NULL DEFAULT '[]'::jsonb,
+    sponsors_support jsonb NOT NULL DEFAULT '[]'::jsonb,
+    resource_needs jsonb NOT NULL DEFAULT '[]'::jsonb,
+    contribution_links jsonb NOT NULL DEFAULT '[]'::jsonb,
+    map_enabled boolean NOT NULL DEFAULT false,
+    default_view varchar(100),
+    participation_dimensions jsonb NOT NULL DEFAULT '[]'::jsonb,
+    event_visibility varchar(20) NOT NULL DEFAULT 'PRIVATE'
+        CHECK (event_visibility IN ('PUBLIC', 'UNLISTED', 'PRIVATE')),
+    show_participant_counts boolean NOT NULL DEFAULT false,
+    show_actor_tree boolean NOT NULL DEFAULT false,
+    show_sponsors boolean NOT NULL DEFAULT false,
+    show_resources boolean NOT NULL DEFAULT false,
+    show_payment_links boolean NOT NULL DEFAULT false,
+    version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (jsonb_typeof(initial_invites) = 'array'),
+    CHECK (jsonb_typeof(sponsors_support) = 'array'),
+    CHECK (jsonb_typeof(resource_needs) = 'array'),
+    CHECK (jsonb_typeof(contribution_links) = 'array'),
+    CHECK (jsonb_typeof(participation_dimensions) = 'array')
+);
+
+CREATE TABLE IF NOT EXISTS event_setup_updates (
+    id uuid PRIMARY KEY,
+    event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    organizer_id uuid NOT NULL,
+    idempotency_key varchar(200) NOT NULL UNIQUE,
+    request_fingerprint char(64) NOT NULL,
+    applied_version integer NOT NULL CHECK (applied_version > 0),
+    result jsonb NOT NULL CHECK (jsonb_typeof(result) = 'object'),
+    correlation_id uuid NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS proposals (
     id uuid PRIMARY KEY,
     proposal_type varchar(100) NOT NULL,

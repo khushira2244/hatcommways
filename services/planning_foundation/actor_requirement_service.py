@@ -288,11 +288,14 @@ class ActorRequirementService:
                 )
 
             expected = proposal["base_versions"]
+            sibling_only_parent_change = self._parent_versions_changed_only_by_sibling_approvals(
+                connection, proposal, event, stage, work
+            )
             if (
                 event["version"] != expected["event"]
                 or stage["version"] != expected["stage"]
                 or work["version"] != expected["work"]
-            ):
+            ) and not sibling_only_parent_change:
                 connection.execute(
                     "UPDATE proposals SET status = 'STALE', decided_at = now() WHERE id = %s",
                     (command.proposal_id,),
@@ -323,10 +326,12 @@ class ActorRequirementService:
                 )
 
             payload = command.edited_payload if command.edited_payload is not None else proposal["payload"]
+            validation_event = {**event, "version": expected["event"]} if sibling_only_parent_change else event
+            validation_stage = {**stage, "version": expected["stage"]} if sibling_only_parent_change else stage
             plan = self.validator.parse_and_validate(
                 payload,
-                EventSnapshot.model_validate(event),
-                self._stage_snapshot(stage),
+                EventSnapshot.model_validate(validation_event),
+                self._stage_snapshot(validation_stage),
                 self._work_snapshot(work),
                 expected_proposal_id=command.proposal_id,
             )
@@ -438,6 +443,40 @@ class ActorRequirementService:
             return self._list_requirements(connection, work_id)
 
     @staticmethod
+    def _parent_versions_changed_only_by_sibling_approvals(
+        connection, proposal, event, stage, work
+    ) -> bool:
+        expected = proposal["base_versions"]
+        if work["version"] != expected["work"]:
+            return False
+        event_delta = event["version"] - expected["event"]
+        stage_delta = stage["version"] - expected["stage"]
+        if event_delta <= 0 or event_delta != stage_delta:
+            return False
+        row = connection.execute(
+            """
+            SELECT count(*) AS count
+            FROM proposal_decisions decision
+            JOIN proposals sibling ON sibling.id = decision.proposal_id
+            JOIN work_items sibling_work ON sibling_work.id = sibling.target_id
+            WHERE decision.decision = 'APPROVE'
+              AND sibling.proposal_type = 'ACTOR_REQUIREMENT'
+              AND sibling.status = 'APPROVED'
+              AND sibling.id <> %s
+              AND sibling_work.stage_id = %s
+              AND decision.applied_event_version > %s
+              AND decision.applied_event_version <= %s
+              AND (decision.application_result->>'stage_version')::integer > %s
+              AND (decision.application_result->>'stage_version')::integer <= %s
+            """,
+            (
+                proposal["id"], stage["id"], expected["event"], event["version"],
+                expected["stage"], stage["version"],
+            ),
+        ).fetchone()
+        return row["count"] == event_delta
+
+    @staticmethod
     def _lock_request(connection, request_id: UUID) -> dict[str, Any]:
         row = connection.execute(
             "SELECT * FROM actor_requirement_requests WHERE id=%s FOR UPDATE",
@@ -512,4 +551,3 @@ class ActorRequirementService:
 
     def _before_requirement_approval_outbox(self, connection) -> None:
         """Test seam proving authoritative application and outbox atomicity."""
-
