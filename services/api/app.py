@@ -25,6 +25,10 @@ from services.auth.models import (
 from services.auth.service import AuthService
 from services.agent_runtime.event_planning import EventPlanningWorkflow, StrandsEventPlanningAgent
 from services.agent_runtime.work_design import WorkDesignWorkflow, StrandsWorkDesignAgent
+from services.agent_runtime.actor_requirement import (
+    ActorRequirementWorkflow,
+    StrandsActorRequirementAgent,
+)
 from services.planning_foundation.actor_requirement_service import ActorRequirementService
 from services.planning_foundation.database import Database
 from services.planning_foundation.errors import (
@@ -113,6 +117,10 @@ def create_app(database: Database, *, execute_planning_requests: bool = False) -
         StrandsWorkDesignAgent(ScopedPlanningReadTools(work_service.base)),
     )
     actor_service = ActorRequirementService(database)
+    actor_workflow = ActorRequirementWorkflow(
+        actor_service,
+        StrandsActorRequirementAgent(ScopedPlanningReadTools(actor_service.base)),
+    )
     bearer = HTTPBearer(auto_error=False)
 
     @app.exception_handler(DuplicateEmailError)
@@ -348,7 +356,7 @@ def create_app(database: Database, *, execute_planning_requests: bool = False) -
         session: AuthenticatedSession = Depends(authenticated),
     ):
         authorization.require_active_organizer(body.event_id, session.account.id)
-        return actor_service.request_actor_requirements(
+        actor_request = actor_service.request_actor_requirements(
             event_id=body.event_id,
             stage_id=body.stage_id,
             work_id=work_id,
@@ -358,6 +366,51 @@ def create_app(database: Database, *, execute_planning_requests: bool = False) -
             expected_work_version=body.expected_work_version,
             idempotency_key=body.idempotency_key,
         )
+        if execute_planning_requests and actor_request.status.value == "REQUESTED":
+            actor_workflow.execute(actor_request.id)
+        return actor_service.get_request(actor_request.id)
+
+    @app.get("/events/{event_id}/stages/{stage_id}/actor-tree-workspace")
+    def get_actor_tree_workspace(
+        event_id: UUID,
+        stage_id: UUID,
+        session: AuthenticatedSession = Depends(authenticated),
+    ):
+        authorization.require_active_organizer(event_id, session.account.id)
+        event = actor_service.base.get_event(event_id)
+        selected_stage = actor_service.get_stage(stage_id)
+        if selected_stage.event_id != event_id:
+            raise NotFoundError("stage is not part of this event")
+        stages = stage_service.list_stages(event_id)
+        work = work_service.list_work(stage_id)
+        items = []
+        with database.connect() as connection:
+            for work_item in work:
+                request = connection.execute(
+                    """
+                    SELECT * FROM actor_requirement_requests
+                    WHERE event_id=%s AND stage_id=%s AND work_id=%s
+                    ORDER BY created_at DESC LIMIT 1
+                    """,
+                    (event_id, stage_id, work_item.id),
+                ).fetchone()
+                proposal = (
+                    actor_service.base.get_proposal(request["proposal_id"])
+                    if request is not None and request["proposal_id"] is not None
+                    else None
+                )
+                items.append({
+                    "work": work_item,
+                    "actor_requirement_request": request,
+                    "proposal": proposal,
+                    "requirements": actor_service.list_requirements(work_item.id),
+                })
+        return {
+            "event": event,
+            "stages": stages,
+            "selected_stage": selected_stage,
+            "work_items": items,
+        }
 
     @app.post("/actor-requirement-proposals/{proposal_id}/decision")
     def decide_actor_requirements(

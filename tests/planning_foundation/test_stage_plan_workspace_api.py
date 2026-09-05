@@ -7,6 +7,7 @@ from services.api import create_app
 from services.planning_foundation.models import StagePlanProposal
 from services.planning_foundation.stage_planning_service import StagePlanningService
 from tests.planning_foundation.conftest import make_event_command
+from tests.planning_foundation.work_helpers import create_approved_work
 
 
 def test_workspace_reads_pending_then_authoritative_confirmed_stages(database):
@@ -92,3 +93,43 @@ def test_workspace_reads_pending_then_authoritative_confirmed_stages(database):
         headers={"Authorization":f"Bearer {other_token}"},
     )
     assert denied_inside.status_code == 403
+
+
+def test_actor_tree_workspace_returns_event_stages_and_authoritative_work(database):
+    client = TestClient(create_app(database))
+    account = client.post("/auth/signup", json={
+        "email":"actor-tree@example.com", "display_name":"Actor Tree Owner",
+        "account_type":"INDIVIDUAL", "password":"correct horse battery staple",
+    }).json()
+    token = client.post("/auth/signin", json={
+        "email":"actor-tree@example.com", "password":"correct horse battery staple",
+    }).json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    service = StagePlanningService(database)
+    event, stage, work, _other_stage = create_approved_work(
+        database, service.base, UUID(account["id"])
+    )
+    with database.connect() as connection:
+        connection.execute(
+            """
+            INSERT INTO event_memberships (event_id,account_id,role,status)
+            VALUES (%s,%s,'ORGANIZER','ACTIVE')
+            """,
+            (event.id, UUID(account["id"])),
+        )
+
+    response = client.get(
+        f"/events/{event.id}/stages/{stage.id}/actor-tree-workspace",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["event"]["id"] == str(event.id)
+    assert payload["selected_stage"]["id"] == str(stage.id)
+    assert len(payload["stages"]) == 2
+    assert [item["work"]["id"] for item in payload["work_items"]] == [
+        str(item.id) for item in work
+    ]
+    assert all(item["proposal"] is None for item in payload["work_items"])
+    assert all(item["requirements"] == [] for item in payload["work_items"])
