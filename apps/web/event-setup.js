@@ -4,6 +4,8 @@ const setupStageId = setupParams.get('stage');
 const setupRoot = document.querySelector('#setup-page');
 let setupState;
 
+document.querySelector('#setup-governance').href = `./governance.html?event=${encodeURIComponent(setupEventId || '')}`;
+
 const setupEsc = value => String(value ?? '').replace(/[&<>"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[char]));
 const optional = value => value.trim() || null;
 

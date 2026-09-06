@@ -274,3 +274,43 @@ CREATE TABLE IF NOT EXISTS domain_outbox (
 CREATE INDEX IF NOT EXISTS domain_outbox_unpublished_idx
     ON domain_outbox (occurred_at)
     WHERE published_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS governance_assessments (
+    id uuid PRIMARY KEY,
+    event_id uuid NOT NULL UNIQUE REFERENCES events(id) ON DELETE CASCADE,
+    version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+    governance_required boolean NOT NULL,
+    completeness varchar(20) NOT NULL CHECK (completeness IN ('NOT_REQUIRED','COMPLETE','INCOMPLETE')),
+    internal_risk varchar(10) NOT NULL CHECK (internal_risk IN ('LOW','MEDIUM','HIGH')),
+    review_mode varchar(20) NOT NULL CHECK (review_mode IN ('NONE','ORGANIZER','HATCOMMWAYS')),
+    organizer_visible_status varchar(30) NOT NULL CHECK (organizer_visible_status IN ('NOT_REQUIRED','NEEDS_INFORMATION','EVIDENCE_REQUESTED','SUBMITTED','UNDER_REVIEW','CLEARED')),
+    location_context text,
+    event_facts_snapshot jsonb NOT NULL,
+    reasoning_summary text NOT NULL,
+    correlation_id uuid NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS governance_items (
+    id uuid PRIMARY KEY, assessment_id uuid NOT NULL REFERENCES governance_assessments(id) ON DELETE CASCADE,
+    category varchar(40) NOT NULL CHECK (category IN ('LOCATION_VENUE','PUBLIC_SPACE_PERMISSION','SAFETY_EMERGENCY','TRAFFIC_ACCESS','CROWD_CAPACITY','FOOD_VENDOR','MINORS_SUPERVISION','ANIMALS','EQUIPMENT_TEMPORARY_STRUCTURE','SOUND_NOISE','SPONSOR_COMMERCIAL','OTHER')),
+    label varchar(200) NOT NULL, source varchar(30) NOT NULL CHECK (source IN ('AI_DETECTED','ORGANIZER_ADDED','HATCOMMWAYS_ADDED')),
+    knowledge_type varchar(30) NOT NULL CHECK (knowledge_type IN ('VERIFIED_REQUIREMENT','COMMON_PRACTICE','AI_RISK_ADVISORY','UNKNOWN')),
+    reason text, suggested_documents jsonb NOT NULL DEFAULT '[]'::jsonb,
+    status varchar(30) NOT NULL CHECK (status IN ('NEEDS_INFORMATION','EVIDENCE_REQUESTED','PROVIDED','SUBMITTED','UNDER_REVIEW','CLEARED','NOT_APPLICABLE')),
+    organizer_note text, reviewer_note text, blocking boolean NOT NULL DEFAULT false CHECK (blocking=false),
+    created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS governance_evidence (
+    id uuid PRIMARY KEY, governance_item_id uuid NOT NULL REFERENCES governance_items(id) ON DELETE CASCADE,
+    evidence_type varchar(30) NOT NULL CHECK (evidence_type IN ('FILE_REFERENCE','URL','REFERENCE_NUMBER','TEXT_CONFIRMATION')),
+    label varchar(200) NOT NULL, value_or_reference text NOT NULL, submitted_by uuid NOT NULL REFERENCES accounts(id), submitted_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS governance_tickets (
+    id uuid PRIMARY KEY, event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    assessment_id uuid NOT NULL UNIQUE REFERENCES governance_assessments(id) ON DELETE CASCADE,
+    ticket_number varchar(30) NOT NULL UNIQUE,
+    status varchar(40) NOT NULL CHECK (status IN ('UNDER_REVIEW','MORE_INFORMATION_REQUESTED','CLEARED','NOT_APPLICABLE')),
+    internal_risk varchar(10) NOT NULL CHECK (internal_risk IN ('LOW','MEDIUM','HIGH')),
+    decision text, decision_reason text,
+    created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);

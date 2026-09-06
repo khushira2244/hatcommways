@@ -29,6 +29,9 @@ from services.agent_runtime.actor_requirement import (
     ActorRequirementWorkflow,
     StrandsActorRequirementAgent,
 )
+from services.agent_runtime.governance import GovernanceWorkflow, StrandsGovernanceAgent
+from services.planning_foundation.governance_service import GovernanceService
+from services.planning_foundation.governance_models import ManualItem, ItemPatch, EvidenceCreate, SubmitGovernance
 from services.planning_foundation.actor_requirement_service import ActorRequirementService
 from services.planning_foundation.event_setup_models import EventSetupSnapshot, EventSetupUpdateRequest
 from services.planning_foundation.event_setup_service import EventSetupService
@@ -103,7 +106,7 @@ def create_app(database: Database, *, execute_planning_requests: bool = False) -
         CORSMiddleware,
         allow_origins=["http://127.0.0.1:4173", "http://localhost:4173"],
         allow_credentials=False,
-        allow_methods=["GET", "POST", "PUT"],
+        allow_methods=["GET", "POST", "PUT", "PATCH"],
         allow_headers=["Authorization", "Content-Type"],
     )
     auth = AuthService(database)
@@ -120,6 +123,8 @@ def create_app(database: Database, *, execute_planning_requests: bool = False) -
     )
     actor_service = ActorRequirementService(database)
     setup_service = EventSetupService(database)
+    governance_service = GovernanceService(database)
+    governance_workflow = GovernanceWorkflow(governance_service, StrandsGovernanceAgent(governance_service))
     actor_workflow = ActorRequirementWorkflow(
         actor_service,
         StrandsActorRequirementAgent(ScopedPlanningReadTools(actor_service.base)),
@@ -446,6 +451,36 @@ def create_app(database: Database, *, execute_planning_requests: bool = False) -
     ):
         authorization.require_active_organizer(event_id, session.account.id)
         return setup_service.update(event_id, session.account.id, body)
+
+    @app.post("/events/{event_id}/governance-assessment")
+    def assess_governance(event_id: UUID, session: AuthenticatedSession = Depends(authenticated)):
+        authorization.require_active_organizer(event_id, session.account.id)
+        if not execute_planning_requests:
+            raise ValidationError("governance agent execution is disabled")
+        return governance_workflow.execute(event_id, session.account.id)
+
+    @app.get("/events/{event_id}/governance")
+    def get_governance(event_id: UUID, session: AuthenticatedSession = Depends(authenticated)):
+        authorization.require_active_organizer(event_id, session.account.id)
+        return governance_service.get(event_id, session.account.id)
+
+    @app.post("/events/{event_id}/governance/items", status_code=201)
+    def add_governance_item(event_id: UUID, body: ManualItem, session: AuthenticatedSession = Depends(authenticated)):
+        authorization.require_active_organizer(event_id, session.account.id)
+        return governance_service.add_item(event_id, session.account.id, body)
+
+    @app.patch("/governance/items/{item_id}")
+    def patch_governance_item(item_id: UUID, body: ItemPatch, session: AuthenticatedSession = Depends(authenticated)):
+        return governance_service.patch_item(item_id, session.account.id, body)
+
+    @app.post("/governance/items/{item_id}/evidence", status_code=201)
+    def add_governance_evidence(item_id: UUID, body: EvidenceCreate, session: AuthenticatedSession = Depends(authenticated)):
+        return governance_service.add_evidence(item_id, session.account.id, body)
+
+    @app.post("/events/{event_id}/governance/submit")
+    def submit_governance(event_id: UUID, body: SubmitGovernance, session: AuthenticatedSession = Depends(authenticated)):
+        authorization.require_active_organizer(event_id, session.account.id)
+        return governance_service.submit(event_id, session.account.id, body)
 
     return app
 

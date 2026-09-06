@@ -24,7 +24,11 @@ async function api(path, options = {}) {
 }
 
 function readError(data, status) {
-  if (status === 409) return "An account with this email already exists. Try signing in instead.";
+  if (status === 409) {
+    const detail = data?.detail;
+    if (typeof detail === "string" && !detail.toLowerCase().includes("email")) return detail;
+    return "An account with this email already exists. Try signing in instead.";
+  }
   if (status === 401) return "The email or password is incorrect.";
   const detail = data?.detail;
   if (typeof detail === "string") return detail;
