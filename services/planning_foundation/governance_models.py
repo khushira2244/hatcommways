@@ -20,5 +20,15 @@ class GovernanceProposal(StrictModel):
         return self
 class ManualItem(StrictModel): category:Category; label:str=Field(min_length=1,max_length=200); reason:str|None=None; authority:str|None=None; evidence_reference:str|None=None; idempotency_key:str=Field(min_length=1,max_length=200)
 class ItemPatch(StrictModel): expected_assessment_version:int=Field(ge=1); organizer_note:str|None=None; status:ItemStatus; not_applicable_reason:str|None=None
-class EvidenceCreate(StrictModel): evidence_type:str; label:str=Field(min_length=1,max_length=200); value_or_reference:str=Field(min_length=1); idempotency_key:str=Field(min_length=1,max_length=200)
+class EvidenceCreate(StrictModel):
+    evidence_type:str
+    label:str=Field(min_length=1,max_length=200)
+    value_or_reference:str=Field(min_length=1)
+    note:str|None=Field(default=None,max_length=2000)
+    idempotency_key:str=Field(min_length=1,max_length=200)
+    @model_validator(mode='after')
+    def valid_non_file_type(self):
+        if self.evidence_type not in {'URL','REFERENCE_NUMBER','TEXT_CONFIRMATION'}:
+            raise ValueError('invalid non-file evidence type')
+        return self
 class SubmitGovernance(StrictModel): expected_version:int=Field(ge=1); idempotency_key:str=Field(min_length=1,max_length=200)

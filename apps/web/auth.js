@@ -6,7 +6,8 @@ function storeToken(token) { sessionStorage.setItem(TOKEN_KEY, token); }
 function clearToken() { sessionStorage.removeItem(TOKEN_KEY); }
 
 async function api(path, options = {}) {
-  const headers = { ...(options.body ? { "Content-Type": "application/json" } : {}), ...(options.headers || {}) };
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+  const headers = { ...(options.body && !isFormData ? { "Content-Type": "application/json" } : {}), ...(options.headers || {}) };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   const response = await fetch(`${API_BASE}${path}`, { ...options, headers });

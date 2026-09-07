@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.datastructures import UploadFile
 
 from services.auth.authorization import AccountAuthorizationService
 from services.auth.errors import (
@@ -31,6 +33,7 @@ from services.agent_runtime.actor_requirement import (
 )
 from services.agent_runtime.governance import GovernanceWorkflow, StrandsGovernanceAgent
 from services.planning_foundation.governance_service import GovernanceService
+from services.planning_foundation.governance_evidence_storage import LocalGovernanceEvidenceStorage, MAX_EVIDENCE_BYTES
 from services.planning_foundation.governance_models import ManualItem, ItemPatch, EvidenceCreate, SubmitGovernance
 from services.planning_foundation.actor_requirement_service import ActorRequirementService
 from services.planning_foundation.event_setup_models import EventSetupSnapshot, EventSetupUpdateRequest
@@ -100,7 +103,7 @@ class DecisionBody(BaseModel):
     edited_payload: dict[str, Any] | None = None
 
 
-def create_app(database: Database, *, execute_planning_requests: bool = False) -> FastAPI:
+def create_app(database: Database, *, execute_planning_requests: bool = False, governance_upload_root: Path | None = None) -> FastAPI:
     app = FastAPI(title="Hatcommways API", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,
@@ -124,6 +127,7 @@ def create_app(database: Database, *, execute_planning_requests: bool = False) -
     actor_service = ActorRequirementService(database)
     setup_service = EventSetupService(database)
     governance_service = GovernanceService(database)
+    governance_storage = LocalGovernanceEvidenceStorage(governance_upload_root)
     governance_workflow = GovernanceWorkflow(governance_service, StrandsGovernanceAgent(governance_service))
     actor_workflow = ActorRequirementWorkflow(
         actor_service,
@@ -474,7 +478,29 @@ def create_app(database: Database, *, execute_planning_requests: bool = False) -
         return governance_service.patch_item(item_id, session.account.id, body)
 
     @app.post("/governance/items/{item_id}/evidence", status_code=201)
-    def add_governance_evidence(item_id: UUID, body: EvidenceCreate, session: AuthenticatedSession = Depends(authenticated)):
+    async def add_governance_evidence(item_id: UUID, request: Request, session: AuthenticatedSession = Depends(authenticated)):
+        content_type = request.headers.get("content-type", "")
+        if content_type.lower().startswith("multipart/form-data"):
+            form = await request.form()
+            upload = form.get("file")
+            if not isinstance(upload, UploadFile):
+                raise ValidationError("an evidence file is required")
+            content = await upload.read(MAX_EVIDENCE_BYTES + 1)
+            stored = governance_storage.save(upload.filename or "", upload.content_type or "", content)
+            label = str(form.get("label") or stored.original_filename).strip()
+            note = str(form.get("note") or "").strip() or None
+            if not label or len(label) > 200:
+                governance_storage.delete(stored.storage_key)
+                raise ValidationError("evidence label must be between 1 and 200 characters")
+            if note and len(note) > 2000:
+                governance_storage.delete(stored.storage_key)
+                raise ValidationError("evidence note must be 2000 characters or fewer")
+            try:
+                return governance_service.add_file_evidence(item_id, session.account.id, stored, label, note)
+            except Exception:
+                governance_storage.delete(stored.storage_key)
+                raise
+        body = EvidenceCreate.model_validate(await request.json())
         return governance_service.add_evidence(item_id, session.account.id, body)
 
     @app.post("/events/{event_id}/governance/submit")

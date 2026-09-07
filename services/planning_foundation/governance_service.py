@@ -1,15 +1,16 @@
 from uuid import UUID,uuid4
 from psycopg.types.json import Jsonb
 from .database import Database
-from .errors import NotFoundError,StaleProposalError,ValidationError
+from .errors import AuthorizationError,NotFoundError,StaleProposalError,ValidationError
 from .governance_models import GovernanceProposal,ManualItem,ItemPatch,EvidenceCreate,SubmitGovernance
+from .governance_evidence_storage import StoredEvidenceFile
 from .services import PlanningService
 
 class GovernanceService:
     def __init__(self,database:Database): self.database=database; self.base=PlanningService(database)
     def facts(self,event_id:UUID,organizer_id:UUID):
         event=self.base.get_event(event_id)
-        if event.organizer_id!=organizer_id: raise ValidationError('organizer authorization required')
+        if event.organizer_id!=organizer_id: raise AuthorizationError('organizer authorization required')
         with self.database.connect() as c:
             setup=c.execute('SELECT resource_needs,sponsors_support,event_visibility FROM event_setups WHERE event_id=%s',(event_id,)).fetchone()
         return {'event_id':str(event.id),'event_version':event.version,'purpose':event.purpose,'location':event.location_description,'event_type':event.event_type,'starts_at':event.starts_at.isoformat(),'ends_at':event.ends_at.isoformat(),'planning_context':event.planning_context.model_dump(mode='json') if event.planning_context else None,'setup':dict(setup) if setup else None}
@@ -41,7 +42,7 @@ class GovernanceService:
             items=c.execute('SELECT * FROM governance_items WHERE assessment_id=%s ORDER BY created_at,id',(a['id'],)).fetchall()
             result=[]
             for item in items:
-                evidence=c.execute('SELECT id,evidence_type,label,value_or_reference,submitted_at FROM governance_evidence WHERE governance_item_id=%s ORDER BY submitted_at',(item['id'],)).fetchall()
+                evidence=c.execute('SELECT id,evidence_type,label,value_or_reference,original_filename,content_type,file_size,note,submitted_by AS uploaded_by,submitted_at FROM governance_evidence WHERE governance_item_id=%s ORDER BY submitted_at',(item['id'],)).fetchall()
                 result.append(dict(item)|{'evidence':[dict(x) for x in evidence]})
         visible={k:a[k] for k in ('id','event_id','version','governance_required','completeness','review_mode','organizer_visible_status','location_context','reasoning_summary','created_at','updated_at')}
         return {'event_id':str(event_id),'assessment':visible,'items':result}
@@ -65,11 +66,20 @@ class GovernanceService:
             c.execute('UPDATE governance_items SET status=%s,organizer_note=%s,updated_at=now() WHERE id=%s',(command.status,note,item_id));c.execute('UPDATE governance_assessments SET version=version+1,updated_at=now() WHERE id=%s',(row['id'],))
         return self.get(row['event_id'],organizer_id)
     def add_evidence(self,item_id,organizer_id,command:EvidenceCreate):
-        if command.evidence_type not in {'FILE_REFERENCE','URL','REFERENCE_NUMBER','TEXT_CONFIRMATION'}:raise ValidationError('invalid evidence type')
         with self.database.connect() as c:
             row=c.execute('SELECT a.event_id,a.id FROM governance_items i JOIN governance_assessments a ON a.id=i.assessment_id WHERE i.id=%s',(item_id,)).fetchone()
             if not row:raise NotFoundError('governance item not found')
-            self.facts(row['event_id'],organizer_id);c.execute('INSERT INTO governance_evidence(id,governance_item_id,evidence_type,label,value_or_reference,submitted_by) VALUES(%s,%s,%s,%s,%s,%s)',(uuid4(),item_id,command.evidence_type,command.label,command.value_or_reference,organizer_id));c.execute("UPDATE governance_items SET status='PROVIDED',updated_at=now() WHERE id=%s",(item_id,));c.execute('UPDATE governance_assessments SET version=version+1,updated_at=now() WHERE id=%s',(row['id'],))
+            self.facts(row['event_id'],organizer_id);c.execute('INSERT INTO governance_evidence(id,governance_item_id,evidence_type,label,value_or_reference,note,submitted_by) VALUES(%s,%s,%s,%s,%s,%s,%s)',(uuid4(),item_id,command.evidence_type,command.label,command.value_or_reference,command.note,organizer_id));c.execute("UPDATE governance_items SET status='PROVIDED',updated_at=now() WHERE id=%s",(item_id,));version=c.execute('UPDATE governance_assessments SET version=version+1,updated_at=now() WHERE id=%s RETURNING version',(row['id'],)).fetchone()['version'];PlanningService._enqueue_outbox(c,event_type='governance.evidence_added',aggregate_type='GOVERNANCE',aggregate_id=row['id'],aggregate_version=version,payload={'event_id':str(row['event_id']),'governance_item_id':str(item_id),'evidence_type':command.evidence_type},correlation_id=uuid4(),causation_id=None)
+        return self.get(row['event_id'],organizer_id)
+    def add_file_evidence(self,item_id,organizer_id,file:StoredEvidenceFile,label:str,note:str|None):
+        with self.database.connect() as c:
+            row=c.execute('SELECT a.event_id,a.id FROM governance_items i JOIN governance_assessments a ON a.id=i.assessment_id WHERE i.id=%s',(item_id,)).fetchone()
+            if not row:raise NotFoundError('governance item not found')
+            self.facts(row['event_id'],organizer_id)
+            c.execute("INSERT INTO governance_evidence(id,governance_item_id,evidence_type,label,original_filename,content_type,file_size,storage_key,note,submitted_by) VALUES(%s,%s,'FILE',%s,%s,%s,%s,%s,%s,%s)",(uuid4(),item_id,label,file.original_filename,file.content_type,file.file_size,file.storage_key,note,organizer_id))
+            c.execute("UPDATE governance_items SET status='PROVIDED',updated_at=now() WHERE id=%s",(item_id,))
+            version=c.execute('UPDATE governance_assessments SET version=version+1,updated_at=now() WHERE id=%s RETURNING version',(row['id'],)).fetchone()['version']
+            PlanningService._enqueue_outbox(c,event_type='governance.evidence_added',aggregate_type='GOVERNANCE',aggregate_id=row['id'],aggregate_version=version,payload={'event_id':str(row['event_id']),'governance_item_id':str(item_id),'evidence_type':'FILE'},correlation_id=uuid4(),causation_id=None)
         return self.get(row['event_id'],organizer_id)
     def submit(self,event_id,organizer_id,command:SubmitGovernance):
         state=self.get(event_id,organizer_id);a=state['assessment']

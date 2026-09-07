@@ -302,9 +302,24 @@ CREATE TABLE IF NOT EXISTS governance_items (
 );
 CREATE TABLE IF NOT EXISTS governance_evidence (
     id uuid PRIMARY KEY, governance_item_id uuid NOT NULL REFERENCES governance_items(id) ON DELETE CASCADE,
-    evidence_type varchar(30) NOT NULL CHECK (evidence_type IN ('FILE_REFERENCE','URL','REFERENCE_NUMBER','TEXT_CONFIRMATION')),
-    label varchar(200) NOT NULL, value_or_reference text NOT NULL, submitted_by uuid NOT NULL REFERENCES accounts(id), submitted_at timestamptz NOT NULL DEFAULT now()
+    evidence_type varchar(30) NOT NULL CHECK (evidence_type IN ('FILE','URL','REFERENCE_NUMBER','TEXT_CONFIRMATION')),
+    label varchar(200) NOT NULL, value_or_reference text,
+    original_filename varchar(255), content_type varchar(100), file_size bigint,
+    storage_key varchar(500), note text,
+    submitted_by uuid NOT NULL REFERENCES accounts(id), submitted_at timestamptz NOT NULL DEFAULT now(),
+    CHECK ((evidence_type='FILE' AND original_filename IS NOT NULL AND content_type IS NOT NULL AND file_size IS NOT NULL AND storage_key IS NOT NULL AND value_or_reference IS NULL) OR (evidence_type<>'FILE' AND value_or_reference IS NOT NULL AND original_filename IS NULL AND content_type IS NULL AND file_size IS NULL AND storage_key IS NULL))
 );
+ALTER TABLE governance_evidence DROP CONSTRAINT IF EXISTS governance_evidence_evidence_type_check;
+ALTER TABLE governance_evidence ALTER COLUMN value_or_reference DROP NOT NULL;
+ALTER TABLE governance_evidence ADD COLUMN IF NOT EXISTS original_filename varchar(255);
+ALTER TABLE governance_evidence ADD COLUMN IF NOT EXISTS content_type varchar(100);
+ALTER TABLE governance_evidence ADD COLUMN IF NOT EXISTS file_size bigint;
+ALTER TABLE governance_evidence ADD COLUMN IF NOT EXISTS storage_key varchar(500);
+ALTER TABLE governance_evidence ADD COLUMN IF NOT EXISTS note text;
+UPDATE governance_evidence SET evidence_type='REFERENCE_NUMBER' WHERE evidence_type='FILE_REFERENCE';
+ALTER TABLE governance_evidence ADD CONSTRAINT governance_evidence_evidence_type_check CHECK (evidence_type IN ('FILE','URL','REFERENCE_NUMBER','TEXT_CONFIRMATION'));
+ALTER TABLE governance_evidence DROP CONSTRAINT IF EXISTS governance_evidence_shape_check;
+ALTER TABLE governance_evidence ADD CONSTRAINT governance_evidence_shape_check CHECK ((evidence_type='FILE' AND original_filename IS NOT NULL AND content_type IS NOT NULL AND file_size IS NOT NULL AND storage_key IS NOT NULL AND value_or_reference IS NULL) OR (evidence_type<>'FILE' AND value_or_reference IS NOT NULL AND original_filename IS NULL AND content_type IS NULL AND file_size IS NULL AND storage_key IS NULL));
 CREATE TABLE IF NOT EXISTS governance_tickets (
     id uuid PRIMARY KEY, event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     assessment_id uuid NOT NULL UNIQUE REFERENCES governance_assessments(id) ON DELETE CASCADE,
