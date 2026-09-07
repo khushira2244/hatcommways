@@ -4,6 +4,44 @@ const EVENT_IDEMPOTENCY_KEY = "hatcommways_event_create_idempotency";
 const participantOptions = ["Community Members","Volunteers","Students","Families","Organizations","Local Businesses","Experts / Specialists","Other"];
 let wizardStep = 1;
 
+function futureDemoDates(now = new Date()) {
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30);
+  const localDate = value => [value.getFullYear(), String(value.getMonth() + 1).padStart(2, "0"), String(value.getDate()).padStart(2, "0")].join("-");
+  return { startDate: localDate(start), endDate: localDate(start) };
+}
+
+function demoEventFixture(now = new Date()) {
+  return {
+    name: "Gachibowli Community Lake Cleanup",
+    shortPurpose: "Organize a community cleanup around a local lake to remove plastic waste, separate recyclable material, coordinate volunteers, and hand over collected waste to the responsible local authority.",
+    category: "Environment", customCategory: "", format: "In Person",
+    venue: "Gachibowli Lake", city: "Hyderabad", region: "Telangana", country: "India",
+    ...futureDemoDates(now), startTime: "08:00", endTime: "13:00", timezone: "Asia/Kolkata",
+    detailedPurpose: "Clean a public-access lake area, remove plastic and recyclable waste, coordinate volunteers safely, and arrange proper collection and disposal with the responsible local authority.",
+    scale: "50",
+    participants: ["Community Members", "Volunteers", "Organizations", "Experts / Specialists"],
+    customParticipant: "",
+    resources: "Gloves, trash bags, collection tools, first-aid supplies, drinking water, transport support, and waste collection support.",
+    requirements: "Public-space or lake-access permission may be needed. Collected waste must be handed over safely. Participants may work near access roads and should use protective equipment.",
+    constraints: "Volunteer availability, weather, safe lake access, nearby traffic, waste collection timing, and coordination with local authorities.",
+    outcomes: "Remove visible waste, separate recyclable material, safely hand over collected waste, improve the lake surroundings, and create a reusable cleanup plan.",
+    notes: "Avoid disturbing wildlife or entering unsafe lake areas. Coordinate access and waste collection with the responsible local authority.",
+    theme: "Professional / Formal", customTheme: "",
+  };
+}
+
+function applyWizardValues(form, values) {
+  form.querySelectorAll('[name="participants"]').forEach(field => { field.checked = values.participants?.includes(field.value) || false; });
+  Object.entries(values).forEach(([name, value]) => {
+    if (name === "participants") return;
+    form.querySelectorAll(`[name="${name}"]`).forEach(field => {
+      if (field.type === "radio") field.checked = field.value === value;
+      else field.value = value ?? "";
+    });
+  });
+  form.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 function wizardValues(form) { const data = Object.fromEntries(new FormData(form)); data.participants = [...form.querySelectorAll('[name="participants"]:checked')].map(x=>x.value); return data; }
 function saveWizard(form) { sessionStorage.setItem(WIZARD_KEY, JSON.stringify(wizardValues(form))); }
 function restoreWizard(form) { const saved=JSON.parse(sessionStorage.getItem(WIZARD_KEY)||"null"); if(!saved)return; Object.entries(saved).forEach(([k,v])=>{ if(k==="participants") return v.forEach(x=>form.querySelector(`[name="participants"][value="${CSS.escape(x)}"]`)?.click()); const fields=form.querySelectorAll(`[name="${k}"]`); fields.forEach(f=>{ if(f.type==="radio") f.checked=f.value===v; else f.value=v??""; }); }); }
@@ -95,4 +133,16 @@ if (wizard) {
     );
     contextReview.append(themeValue);
   };
+
+  const demoButton = document.querySelector("#fill-demo-event");
+  const isLocalDevelopment = ["localhost", "127.0.0.1", "::1"].includes(location.hostname);
+  if (isLocalDevelopment) {
+    demoButton.hidden = false;
+    demoButton.addEventListener("click", () => {
+      applyWizardValues(wizard, demoEventFixture());
+      updateThemeConditions({ clearInactive: true });
+      saveWizard(wizard);
+      if (wizardStep === 4) renderReview();
+    });
+  }
 }
