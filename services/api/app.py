@@ -2,14 +2,17 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any
-from uuid import UUID
+from typing import Any, Literal
+from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
+from psycopg.types.json import Jsonb
+from uuid import uuid4
 from starlette.datastructures import UploadFile
+from psycopg.types.json import Jsonb
 
 from services.auth.authorization import AccountAuthorizationService
 from services.auth.errors import (
@@ -62,6 +65,7 @@ class EventCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=200)
+    category: str | None = Field(default=None, min_length=1, max_length=100)
     purpose: str = Field(min_length=1, max_length=4000)
     event_type: str = Field(min_length=1, max_length=100)
     starts_at: datetime
@@ -70,6 +74,7 @@ class EventCreateRequest(BaseModel):
     location_description: str = Field(min_length=1, max_length=500)
     planning_context: EventPlanningContext | None = None
     idempotency_key: str = Field(min_length=1, max_length=200)
+    draft_id: UUID | None = None
 
 
 class PlanningRequestBody(BaseModel):
@@ -101,6 +106,19 @@ class DecisionBody(BaseModel):
     decision: ProposalDecision
     decision_idempotency_key: str = Field(min_length=1, max_length=200)
     edited_payload: dict[str, Any] | None = None
+
+
+class EventDraftBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    draft_id: UUID | None = None
+    payload: dict[str, Any]
+    current_step: int = Field(ge=1, le=4)
+
+
+class ResumeStateBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    current_phase: Literal["GOVERNANCE", "STAGE_PLANNING", "WORK_DESIGN", "ACTOR_REQUIREMENTS", "EVENT_SETUP", "READY", "PUBLISHED"]
+    last_open_stage_id: UUID | None = None
 
 
 def create_app(database: Database, *, execute_planning_requests: bool = False, governance_upload_root: Path | None = None) -> FastAPI:
@@ -211,16 +229,95 @@ def create_app(database: Database, *, execute_planning_requests: bool = False, g
     def current_account(session: AuthenticatedSession = Depends(authenticated)):
         return session.account
 
+    @app.put("/me/event-drafts")
+    def save_event_draft(body: EventDraftBody, session: AuthenticatedSession = Depends(authenticated)):
+        draft_id = body.draft_id or uuid4()
+        with database.connect() as connection:
+            existing = connection.execute("SELECT account_id FROM event_creation_drafts WHERE id=%s", (draft_id,)).fetchone()
+            if existing is not None and existing["account_id"] != session.account.id:
+                raise AuthorizationError("event draft belongs to another account")
+            row = connection.execute(
+                """INSERT INTO event_creation_drafts(id,account_id,name,current_step,payload)
+                   VALUES(%s,%s,%s,%s,%s)
+                   ON CONFLICT(id) DO UPDATE SET name=excluded.name,current_step=excluded.current_step,
+                     payload=excluded.payload,version=event_creation_drafts.version+1,updated_at=now()
+                   RETURNING *""",
+                (draft_id, session.account.id, str(body.payload.get("name") or "Untitled event").strip() or "Untitled event", body.current_step, Jsonb(body.payload)),
+            ).fetchone()
+        return row
+
+    @app.get("/me/event-drafts/{draft_id}")
+    def get_event_draft(draft_id: UUID, session: AuthenticatedSession = Depends(authenticated)):
+        with database.connect() as connection:
+            row = connection.execute("SELECT * FROM event_creation_drafts WHERE id=%s AND account_id=%s", (draft_id, session.account.id)).fetchone()
+        if row is None:
+            raise NotFoundError("event draft not found")
+        return row
+
+    @app.put("/events/{event_id}/resume-state")
+    def save_resume_state(event_id: UUID, body: ResumeStateBody, session: AuthenticatedSession = Depends(authenticated)):
+        authorization.require_active_organizer(event_id, session.account.id)
+        if body.last_open_stage_id is not None:
+            with database.connect() as connection:
+                stage = connection.execute("SELECT event_id FROM stages WHERE id=%s", (body.last_open_stage_id,)).fetchone()
+            if stage is None or stage["event_id"] != event_id:
+                raise ValidationError("last open stage must belong to the event")
+        with database.connect() as connection:
+            row = connection.execute(
+                """INSERT INTO event_resume_states(event_id,account_id,current_phase,last_open_stage_id)
+                   VALUES(%s,%s,%s,%s)
+                   ON CONFLICT(event_id) DO UPDATE SET account_id=excluded.account_id,current_phase=excluded.current_phase,
+                     last_open_stage_id=excluded.last_open_stage_id,updated_at=now() RETURNING *""",
+                (event_id, session.account.id, body.current_phase, body.last_open_stage_id),
+            ).fetchone()
+        return row
+
+    @app.get("/me/events")
+    def my_events(session: AuthenticatedSession = Depends(authenticated)):
+        with database.connect() as connection:
+            drafts = connection.execute("SELECT * FROM event_creation_drafts WHERE account_id=%s ORDER BY updated_at DESC", (session.account.id,)).fetchall()
+            events = connection.execute(
+                """SELECT e.*,m.role,m.status AS relationship_status,r.current_phase,r.last_open_stage_id,r.updated_at AS resume_updated_at,
+                    g.organizer_visible_status AS governance_status,
+                    (SELECT count(*) FROM stages s WHERE s.event_id=e.id) AS stage_count,
+                    (SELECT count(*) FROM work_items w WHERE w.event_id=e.id) AS work_count,
+                    (SELECT count(*) FROM actor_requirements a WHERE a.event_id=e.id) AS actor_requirement_count,
+                    EXISTS(SELECT 1 FROM event_setups es WHERE es.event_id=e.id) AS setup_saved
+                   FROM event_memberships m JOIN events e ON e.id=m.event_id
+                   LEFT JOIN event_resume_states r ON r.event_id=e.id AND r.account_id=m.account_id
+                   LEFT JOIN LATERAL (SELECT organizer_visible_status FROM governance_assessments ga WHERE ga.event_id=e.id ORDER BY updated_at DESC LIMIT 1) g ON true
+                   WHERE m.account_id=%s ORDER BY e.updated_at DESC""",
+                (session.account.id,),
+            ).fetchall()
+        organizing=[]; participating=[]
+        for event in events:
+            phase = event["current_phase"] or "GOVERNANCE"
+            stage_id = event["last_open_stage_id"]
+            if phase == "WORK_DESIGN" and stage_id is None:
+                with database.connect() as connection:
+                    incomplete = connection.execute("""SELECT s.id FROM stages s WHERE s.event_id=%s AND NOT EXISTS(SELECT 1 FROM work_items w WHERE w.stage_id=s.id) ORDER BY s.stage_order LIMIT 1""", (event["id"],)).fetchone()
+                stage_id = incomplete["id"] if incomplete else None
+            routes={"GOVERNANCE":f"governance.html?event={event['id']}","STAGE_PLANNING":f"planning.html?event={event['id']}","WORK_DESIGN":f"stage.html?event={event['id']}&id={stage_id}" if stage_id else f"planning.html?event={event['id']}","ACTOR_REQUIREMENTS":f"actor-tree.html?event={event['id']}&stage={stage_id}" if stage_id else f"planning.html?event={event['id']}","EVENT_SETUP":f"event-setup.html?event={event['id']}","READY":f"event.html?event={event['id']}","PUBLISHED":f"event.html?event={event['id']}"}
+            item={"event_id":event["id"],"event_name":event["name"],"category":event["category"],"location":event["location_description"],"starts_at":event["starts_at"],"ends_at":event["ends_at"],"relationship":event["role"],"relationship_status":event["relationship_status"],"current_phase":phase,"last_saved_at":event["resume_updated_at"] or event["updated_at"],"resume_target":routes.get(phase,routes["GOVERNANCE"]),"last_open_stage_id":stage_id,"governance_status":event["governance_status"],"stage_count":event["stage_count"],"work_count":event["work_count"],"actor_requirement_count":event["actor_requirement_count"],"event_setup_status":"SAVED" if event["setup_saved"] else "NOT_STARTED","published":phase=="PUBLISHED"}
+            (organizing if event["role"]=="ORGANIZER" else participating).append(item)
+        draft_items=[{"draft_id":row["id"],"event_name":row["name"],"current_phase":"CREATION_DRAFT","current_step":row["current_step"],"last_saved_at":row["updated_at"],"resume_target":f"create-event.html?draft={row['id']}"} for row in drafts]
+        return {"organizing":draft_items+organizing,"participating":participating}
+
     @app.post("/events", status_code=201)
     def create_event(
         body: EventCreateRequest,
         session: AuthenticatedSession = Depends(authenticated),
     ):
-        values = body.model_dump(exclude={"idempotency_key"})
+        values = body.model_dump(exclude={"idempotency_key", "draft_id"})
         command = EventCreate(organizer_id=session.account.id, **values)
-        return authorization.create_event_for_account(
+        event = authorization.create_event_for_account(
             command, idempotency_key=body.idempotency_key
         )
+        with database.connect() as connection:
+            connection.execute("INSERT INTO event_resume_states(event_id,account_id,current_phase) VALUES(%s,%s,'GOVERNANCE') ON CONFLICT(event_id) DO NOTHING", (event.id, session.account.id))
+            if body.draft_id is not None:
+                connection.execute("DELETE FROM event_creation_drafts WHERE id=%s AND account_id=%s", (body.draft_id, session.account.id))
+        return event
 
     @app.post("/events/{event_id}/planning-requests", status_code=201)
     def request_event_planning(

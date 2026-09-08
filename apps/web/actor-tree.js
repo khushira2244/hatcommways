@@ -181,3 +181,4 @@ document.querySelector('#event-root').onclick = () => {
   renderActorTree();
 };
 initializeActorTree();
+installSaveExit(actorEventId, 'ACTOR_REQUIREMENTS', actorStageId);

@@ -21,3 +21,4 @@ document.querySelector('#generate-work').onclick=requestWork;document.querySelec
 document.querySelector('#confirm-work').onclick=confirmWork;
 function showError(error){const host=document.querySelector('#inside-message');host.textContent=error.message;root.hidden=false}
 initialize();
+installSaveExit(eventId, 'WORK_DESIGN', stageId);

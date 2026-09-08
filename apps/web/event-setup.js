@@ -121,3 +121,7 @@ document.querySelector('#setup-form').onsubmit = async event => {
 };
 
 initializeSetup();
+installSaveExit(setupEventId, 'EVENT_SETUP', setupStageId, async()=>{
+  if (!document.querySelector('#setup-form').reportValidity()) throw new Error('Review the highlighted setup fields before saving.');
+  setupState = await api(`/events/${setupEventId}/setup`, {method:'PUT',body:JSON.stringify({...snapshot(),expected_version:setupState.version,idempotency_key:crypto.randomUUID()})});
+});

@@ -3,6 +3,7 @@ const CREATED_KEY = "hatcommways_created_event";
 const EVENT_IDEMPOTENCY_KEY = "hatcommways_event_create_idempotency";
 const participantOptions = ["Community Members","Volunteers","Students","Families","Organizations","Local Businesses","Experts / Specialists","Other"];
 let wizardStep = 1;
+let creationDraftId = new URLSearchParams(location.search).get('draft');
 
 function futureDemoDates(now = new Date()) {
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30);
@@ -67,7 +68,7 @@ function planningContext(d){
 }
 
 const wizard=document.querySelector('#event-wizard');
-if(wizard){const host=document.querySelector('#participants');participantOptions.forEach(x=>host.insertAdjacentHTML('beforeend',`<label><input type="checkbox" name="participants" value="${x}"><span>${x}</span></label>`));restoreWizard(wizard); const updateConditions=()=>{const other=wizard.querySelector('[name="category"][value="Other"]').checked;wizard.customCategory.hidden=!other;wizard.customCategory.required=other;const online=wizard.format.value==='Online';document.querySelector('#physical-location').hidden=online;document.querySelector('#location-preview').hidden=online;['venue','city','region','country'].forEach(n=>wizard[n].required=!online);const customParticipantActive=[...wizard.querySelectorAll('[name="participants"]:checked')].some(x=>x.value==='Other');wizard.customParticipant.hidden=!customParticipantActive;wizard.customParticipant.required=customParticipantActive;wizard.customParticipant.disabled=!customParticipantActive;};wizard.addEventListener('change',()=>{updateConditions();saveWizard(wizard)});wizard.addEventListener('input',()=>saveWizard(wizard));updateConditions();document.querySelector('#continue-step').onclick=()=>{if(visibleValid())setStep(wizardStep+1)};document.querySelector('#back-step').onclick=()=>setStep(wizardStep-1);document.querySelector('#skip-context').onclick=()=>{if(wizard.detailedPurpose.checkValidity())setStep(4);else wizard.detailedPurpose.reportValidity()};wizard.addEventListener('submit',async e=>{e.preventDefault();if(wizardStep!==4)return;if(!visibleValid())return;const d=wizardValues(wizard);const button=document.querySelector('#create-event');button.disabled=true;try{const event=await api('/events',{method:'POST',body:JSON.stringify({name:d.name.trim(),purpose:d.shortPurpose.trim(),event_type:d.format,starts_at:iso(d.startDate,d.startTime,d.timezone),ends_at:iso(d.endDate,d.endTime,d.timezone),timezone:d.timezone,location_description:d.format==='Online'?'Online':`${d.venue}, ${d.city}, ${d.region}, ${d.country}`,planning_context:planningContext(d),idempotency_key:sessionStorage.getItem(EVENT_IDEMPOTENCY_KEY)||(()=>{const key=crypto.randomUUID();sessionStorage.setItem(EVENT_IDEMPOTENCY_KEY,key);return key})()})});const account=await api('/auth/me');sessionStorage.setItem(CREATED_KEY,JSON.stringify({event,form:d,createdBy:account.display_name}));sessionStorage.removeItem(WIZARD_KEY);sessionStorage.removeItem(EVENT_IDEMPOTENCY_KEY);location.assign('./event-created.html');}catch(err){showMessage(document.querySelector('#create-error'),err.message);button.disabled=false;}});}
+if(wizard){const host=document.querySelector('#participants');participantOptions.forEach(x=>host.insertAdjacentHTML('beforeend',`<label><input type="checkbox" name="participants" value="${x}"><span>${x}</span></label>`));restoreWizard(wizard); const updateConditions=()=>{const other=wizard.querySelector('[name="category"][value="Other"]').checked;wizard.customCategory.hidden=!other;wizard.customCategory.required=other;const online=wizard.format.value==='Online';document.querySelector('#physical-location').hidden=online;document.querySelector('#location-preview').hidden=online;['venue','city','region','country'].forEach(n=>wizard[n].required=!online);const customParticipantActive=[...wizard.querySelectorAll('[name="participants"]:checked')].some(x=>x.value==='Other');wizard.customParticipant.hidden=!customParticipantActive;wizard.customParticipant.required=customParticipantActive;wizard.customParticipant.disabled=!customParticipantActive;};wizard.addEventListener('change',()=>{updateConditions();saveWizard(wizard)});wizard.addEventListener('input',()=>saveWizard(wizard));updateConditions();document.querySelector('#continue-step').onclick=()=>{if(visibleValid())setStep(wizardStep+1)};document.querySelector('#back-step').onclick=()=>setStep(wizardStep-1);document.querySelector('#skip-context').onclick=()=>{if(wizard.detailedPurpose.checkValidity())setStep(4);else wizard.detailedPurpose.reportValidity()};wizard.addEventListener('submit',async e=>{e.preventDefault();if(wizardStep!==4)return;if(!visibleValid())return;const d=wizardValues(wizard);const button=document.querySelector('#create-event');button.disabled=true;try{const event=await api('/events',{method:'POST',body:JSON.stringify({name:d.name.trim(),category:(d.category==='Other'?d.customCategory:d.category).trim(),purpose:d.shortPurpose.trim(),event_type:d.format,starts_at:iso(d.startDate,d.startTime,d.timezone),ends_at:iso(d.endDate,d.endTime,d.timezone),timezone:d.timezone,location_description:d.format==='Online'?'Online':`${d.venue}, ${d.city}, ${d.region}, ${d.country}`,planning_context:planningContext(d),draft_id:creationDraftId||null,idempotency_key:sessionStorage.getItem(EVENT_IDEMPOTENCY_KEY)||(()=>{const key=crypto.randomUUID();sessionStorage.setItem(EVENT_IDEMPOTENCY_KEY,key);return key})()})});const account=await api('/auth/me');sessionStorage.setItem(CREATED_KEY,JSON.stringify({event,form:d,createdBy:account.display_name}));sessionStorage.removeItem(WIZARD_KEY);sessionStorage.removeItem(EVENT_IDEMPOTENCY_KEY);location.assign('./event-created.html');}catch(err){showMessage(document.querySelector('#create-error'),err.message);button.disabled=false;}});}
 
 const success=document.querySelector('#success-page');
 if(success){(async()=>{if(!getToken()){location.replace('./signin.html');return}try{await api('/auth/me');const saved=JSON.parse(sessionStorage.getItem(CREATED_KEY)||'null');if(!saved){location.replace('./app.html');return}const {event,form,createdBy}=saved;success.querySelector('#success-summary').innerHTML=`<h2>Event Summary</h2><dl><div><dt>Event Name</dt><dd>${event.name}</dd></div><div><dt>Category</dt><dd>${form.category==='Other'?form.customCategory:form.category}</dd></div><div><dt>Date/Time</dt><dd>${form.startDate} ${form.startTime} — ${form.endDate} ${form.endTime}</dd></div><div><dt>Location</dt><dd>${event.location_description}</dd></div><div><dt>Created By</dt><dd>${createdBy}</dd></div></dl>`;success.querySelector('#continue-planning').href=`./governance.html?event=${event.id}`;success.querySelector('#view-created-event').href=`./event.html?id=${event.id}`;success.hidden=false;}catch{clearToken();location.replace('./signin.html')}})();}
@@ -144,5 +145,26 @@ if (wizard) {
       saveWizard(wizard);
       if (wizardStep === 4) renderReview();
     });
+  }
+
+  const saveDraftButton = document.createElement('button');
+  saveDraftButton.type = 'button';
+  saveDraftButton.className = 'button button--secondary';
+  saveDraftButton.textContent = 'Save Draft';
+  document.querySelector('.wizard-heading-row').insertBefore(saveDraftButton, demoButton);
+  saveDraftButton.onclick = async () => {
+    saveDraftButton.disabled = true;
+    try {
+      const saved = await api('/me/event-drafts', {method:'PUT', body:JSON.stringify({draft_id:creationDraftId||null,payload:wizardValues(wizard),current_step:wizardStep})});
+      creationDraftId = saved.id;
+      history.replaceState(null,'',`./create-event.html?draft=${encodeURIComponent(saved.id)}`);
+      saveDraftButton.textContent = 'Draft Saved';
+      setTimeout(()=>{saveDraftButton.textContent='Save Draft'},1500);
+    } catch (error) { showMessage(document.querySelector('#create-error'), error.message); }
+    finally { saveDraftButton.disabled = false; }
+  };
+
+  if (creationDraftId) {
+    (async()=>{try{const saved=await api(`/me/event-drafts/${creationDraftId}`);applyWizardValues(wizard,saved.payload);updateThemeConditions();saveWizard(wizard);setStep(saved.current_step)}catch(error){showMessage(document.querySelector('#create-error'),error.message)}})();
   }
 }

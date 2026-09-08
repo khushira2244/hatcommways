@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS events (
     id uuid PRIMARY KEY,
     organizer_id uuid NOT NULL,
     name varchar(200) NOT NULL CHECK (length(btrim(name)) > 0),
+    category varchar(100),
     purpose varchar(4000) NOT NULL CHECK (length(btrim(purpose)) > 0),
     event_type varchar(100) NOT NULL CHECK (length(btrim(event_type)) > 0),
     starts_at timestamptz NOT NULL,
@@ -42,6 +43,23 @@ CREATE TABLE IF NOT EXISTS events (
 );
 
 ALTER TABLE events ADD COLUMN IF NOT EXISTS planning_context jsonb;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS category varchar(100);
+
+CREATE TABLE IF NOT EXISTS event_creation_drafts (
+    id uuid PRIMARY KEY,
+    account_id uuid NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    name varchar(200) NOT NULL DEFAULT 'Untitled event',
+    payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object'),
+    current_step integer NOT NULL CHECK (current_step BETWEEN 1 AND 4),
+    version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE event_creation_drafts ADD COLUMN IF NOT EXISTS name varchar(200) NOT NULL DEFAULT 'Untitled event';
+
+CREATE INDEX IF NOT EXISTS event_creation_drafts_account_idx
+    ON event_creation_drafts (account_id, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS event_memberships (
     event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,
@@ -170,6 +188,16 @@ CREATE TABLE IF NOT EXISTS stage_dependencies (
     depends_on_stage_id uuid NOT NULL REFERENCES stages(id) ON DELETE CASCADE,
     PRIMARY KEY (stage_id, depends_on_stage_id),
     CHECK (stage_id <> depends_on_stage_id)
+);
+
+CREATE TABLE IF NOT EXISTS event_resume_states (
+    event_id uuid PRIMARY KEY REFERENCES events(id) ON DELETE CASCADE,
+    account_id uuid NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    current_phase varchar(40) NOT NULL CHECK (current_phase IN (
+        'GOVERNANCE','STAGE_PLANNING','WORK_DESIGN','ACTOR_REQUIREMENTS','EVENT_SETUP','READY','PUBLISHED'
+    )),
+    last_open_stage_id uuid REFERENCES stages(id) ON DELETE SET NULL,
+    updated_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS work_design_requests (

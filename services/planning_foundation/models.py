@@ -100,6 +100,7 @@ class EventCreate(BaseModel):
 
     organizer_id: UUID
     name: str = Field(min_length=1, max_length=200)
+    category: str | None = Field(default=None, min_length=1, max_length=100)
     purpose: str = Field(min_length=1, max_length=4000)
     event_type: str = Field(min_length=1, max_length=100)
     starts_at: datetime
@@ -111,6 +112,16 @@ class EventCreate(BaseModel):
     @field_validator("name", "purpose", "event_type", "timezone", "location_description")
     @classmethod
     def reject_blank_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+    @field_validator("category")
+    @classmethod
+    def normalize_optional_category(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         value = value.strip()
         if not value:
             raise ValueError("must not be blank")
@@ -131,6 +142,7 @@ class EventSnapshot(BaseModel):
     id: UUID
     organizer_id: UUID
     name: str
+    category: str | None = None
     purpose: str
     event_type: str
     starts_at: datetime

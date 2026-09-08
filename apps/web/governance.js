@@ -82,3 +82,4 @@ document.querySelector('#submit-governance').onclick = async () => {
   }
 };
 initialize();
+installSaveExit(govEventId, 'GOVERNANCE');

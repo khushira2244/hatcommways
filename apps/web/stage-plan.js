@@ -29,3 +29,4 @@ document.querySelector('#fit-view').onclick=()=>document.querySelector('.timelin
 document.querySelector('#confirm-stages').onclick=async()=>{const button=document.querySelector('#confirm-stages');button.disabled=true;try{const edited={...clone(original),proposed_stages:localStages.map((s,i)=>({...s,proposed_order:i+1}))};await api(`/stage-proposals/${workspace.proposal.id}/decision`,{method:'POST',body:JSON.stringify({decision:'APPROVE',decision_idempotency_key:`stage-approval:${workspace.proposal.id}`,edited_payload:edited})});location.reload()}catch(error){showError(error);button.disabled=false}};
 function showError(error){const host=document.querySelector('#workspace-message');if(host)host.textContent=error.message;else document.body.textContent=error.message}
 initialize();
+installSaveExit(eventId, 'STAGE_PLANNING');

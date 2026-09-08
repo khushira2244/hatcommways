@@ -35,10 +35,10 @@ class AccountAuthorizationService:
             row = connection.execute(
                 """
                 INSERT INTO events (
-                    id, organizer_id, name, purpose, event_type, starts_at,
+                    id, organizer_id, name, category, purpose, event_type, starts_at,
                     ends_at, timezone, location_description, planning_context
                 ) VALUES (
-                    %(id)s, %(organizer_id)s, %(name)s, %(purpose)s,
+                    %(id)s, %(organizer_id)s, %(name)s, %(category)s, %(purpose)s,
                     %(event_type)s, %(starts_at)s, %(ends_at)s, %(timezone)s,
                     %(location_description)s, %(planning_context)s
                 ) RETURNING *

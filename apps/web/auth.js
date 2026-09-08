@@ -42,6 +42,25 @@ function showMessage(element, message, kind = "error") {
   element.className = `form-message form-message--${kind} is-visible`;
 }
 
+function installSaveExit(eventId, currentPhase, stageId = null, beforeExit = null) {
+  if (!eventId || document.querySelector('#save-and-exit')) return;
+  const button = document.createElement('button');
+  button.id = 'save-and-exit';
+  button.type = 'button';
+  button.className = 'button button--secondary';
+  button.textContent = 'Save & Exit';
+  button.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:20';
+  button.onclick = async () => {
+    button.disabled = true;
+    try {
+      if (beforeExit) await beforeExit();
+      await api(`/events/${eventId}/resume-state`, {method:'PUT',body:JSON.stringify({current_phase:currentPhase,last_open_stage_id:stageId})});
+      location.assign('./my-events.html');
+    } catch (error) { button.textContent = error.message; button.disabled = false; }
+  };
+  document.body.append(button);
+}
+
 const signupForm = document.querySelector("#signup-form");
 if (signupForm) {
   signupForm.addEventListener("submit", async (event) => {
@@ -87,7 +106,7 @@ if (signinForm) {
       const session = await api("/auth/signin", { method: "POST", body: JSON.stringify({ email: values.get("email").trim(), password: values.get("password") }) });
       storeToken(session.access_token);
       await api("/auth/me");
-      window.location.assign("./app.html");
+      window.location.assign("./my-events.html");
     } catch (error) {
       clearToken();
       showMessage(message, error.message);
