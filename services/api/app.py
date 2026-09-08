@@ -35,6 +35,7 @@ from services.agent_runtime.actor_requirement import (
     StrandsActorRequirementAgent,
 )
 from services.agent_runtime.governance import GovernanceWorkflow, StrandsGovernanceAgent
+from services.agent_runtime.participation_advisory import DeterministicParticipationAdvisory, StrandsParticipationAdvisoryAgent
 from services.planning_foundation.governance_service import GovernanceService
 from services.planning_foundation.governance_evidence_storage import LocalGovernanceEvidenceStorage, MAX_EVIDENCE_BYTES
 from services.planning_foundation.governance_models import ManualItem, ItemPatch, EvidenceCreate, SubmitGovernance
@@ -59,6 +60,38 @@ from services.planning_foundation.models import (
 from services.planning_foundation.stage_planning_service import StagePlanningService
 from services.planning_foundation.work_design_service import WorkDesignService
 from services.planning_foundation.tools import ScopedPlanningReadTools
+from services.planning_foundation.participation_models import AdvisoryRequest, ParticipationSubmit, ParticipationDecisionBody
+from services.planning_foundation.participation_service import ParticipationService
+from services.planning_foundation.actor_dashboard_service import ActorDashboardService
+
+class MeetingCreateBody(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    title: str = Field(min_length=1,max_length=200)
+    meeting_type: Literal['BRIEFING','COORDINATION','HANDOFF','CHECK_IN','REVIEW','OTHER']
+    start_time: datetime
+    end_time: datetime
+    location: str | None = None
+    note: str | None = None
+    audience: Literal['ALL_ACTORS','STAGE','WORK','ROLE','SPECIFIC_ACTORS']
+    stage_id: UUID | None = None
+    work_id: UUID | None = None
+    actor_requirement_id: UUID | None = None
+    specific_actor_ids: list[UUID] = []
+
+class MeetingUpdateBody(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    expected_version: int = Field(ge=1)
+    start_time: datetime
+    end_time: datetime
+    location: str | None = None
+    note: str | None = None
+    status: Literal['SCHEDULED','RESCHEDULED','CANCELLED']
+
+class AnnouncementBody(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    title: str = Field(min_length=1,max_length=200)
+    message: str = Field(min_length=1,max_length=4000)
+    priority: Literal['LOW','NORMAL','HIGH'] = 'NORMAL'
 
 
 class EventCreateRequest(BaseModel):
@@ -143,6 +176,9 @@ def create_app(database: Database, *, execute_planning_requests: bool = False, g
         StrandsWorkDesignAgent(ScopedPlanningReadTools(work_service.base)),
     )
     actor_service = ActorRequirementService(database)
+    participation_service = ParticipationService(database)
+    actor_dashboard_service = ActorDashboardService(database)
+    participation_advisor = StrandsParticipationAdvisoryAgent() if execute_planning_requests else DeterministicParticipationAdvisory()
     setup_service = EventSetupService(database)
     governance_service = GovernanceService(database)
     governance_storage = LocalGovernanceEvidenceStorage(governance_upload_root)
@@ -289,8 +325,24 @@ def create_app(database: Database, *, execute_planning_requests: bool = False, g
                    WHERE m.account_id=%s ORDER BY e.updated_at DESC""",
                 (session.account.id,),
             ).fetchall()
+            requested_events = connection.execute(
+                """SELECT DISTINCT ON (pr.event_id) e.*,pr.id AS request_id,pr.status AS participation_status,
+                          pr.updated_at AS participation_updated_at,
+                          (SELECT count(*) FROM participation_request_items pri WHERE pri.participation_request_id=pr.id) AS requested_assignment_count,
+                          (SELECT string_agg(ar.canonical_role_name, ', ' ORDER BY ar.canonical_role_name) FROM participation_request_items pri JOIN actor_requirements ar ON ar.id=pri.actor_requirement_id WHERE pri.participation_request_id=pr.id AND pri.status='APPROVED') AS approved_roles,
+                          (SELECT min(p.approved_start) FROM participations p WHERE p.event_id=pr.event_id AND p.account_id=pr.requester_account_id AND p.status='ACCEPTED') AS approved_start,
+                          (SELECT max(p.approved_end) FROM participations p WHERE p.event_id=pr.event_id AND p.account_id=pr.requester_account_id AND p.status='ACCEPTED') AS approved_end
+                   FROM participation_requests pr JOIN events e ON e.id=pr.event_id
+                   WHERE pr.requester_account_id=%s ORDER BY pr.event_id,pr.updated_at DESC""", (session.account.id,)
+            ).fetchall()
         organizing=[]; participating=[]
         for event in events:
+            if event["role"] != "ORGANIZER":
+                request = next((x for x in requested_events if x["id"] == event["id"]), None)
+                participation_status=request["participation_status"] if request else "APPROVED"
+                target=f"actor-dashboard.html?event={event['id']}" if participation_status in ('APPROVED','PARTIALLY_APPROVED') else f"join-actor.html?event={event['id']}"
+                participating.append({"event_id":event["id"],"event_name":event["name"],"category":event["category"],"location":event["location_description"],"starts_at":event["starts_at"],"ends_at":event["ends_at"],"relationship":"ACTOR","relationship_status":participation_status,"current_phase":participation_status,"last_saved_at":request["participation_updated_at"] if request else event["updated_at"],"resume_target":target,"requested_assignment_count":request["requested_assignment_count"] if request else 0,"approved_roles":request["approved_roles"] if request else None,"approved_start":request["approved_start"] if request else None,"approved_end":request["approved_end"] if request else None,"published":True})
+                continue
             phase = event["current_phase"] or "GOVERNANCE"
             stage_id = event["last_open_stage_id"]
             if phase == "WORK_DESIGN" and stage_id is None:
@@ -300,6 +352,11 @@ def create_app(database: Database, *, execute_planning_requests: bool = False, g
             routes={"GOVERNANCE":f"governance.html?event={event['id']}","STAGE_PLANNING":f"planning.html?event={event['id']}","WORK_DESIGN":f"stage.html?event={event['id']}&id={stage_id}" if stage_id else f"planning.html?event={event['id']}","ACTOR_REQUIREMENTS":f"actor-tree.html?event={event['id']}&stage={stage_id}" if stage_id else f"planning.html?event={event['id']}","EVENT_SETUP":f"event-setup.html?event={event['id']}","READY":f"event.html?event={event['id']}","PUBLISHED":f"event.html?event={event['id']}"}
             item={"event_id":event["id"],"event_name":event["name"],"category":event["category"],"location":event["location_description"],"starts_at":event["starts_at"],"ends_at":event["ends_at"],"relationship":event["role"],"relationship_status":event["relationship_status"],"current_phase":phase,"last_saved_at":event["resume_updated_at"] or event["updated_at"],"resume_target":routes.get(phase,routes["GOVERNANCE"]),"last_open_stage_id":stage_id,"governance_status":event["governance_status"],"stage_count":event["stage_count"],"work_count":event["work_count"],"actor_requirement_count":event["actor_requirement_count"],"event_setup_status":"SAVED" if event["setup_saved"] else "NOT_STARTED","published":phase=="PUBLISHED"}
             (organizing if event["role"]=="ORGANIZER" else participating).append(item)
+        existing_participating={item["event_id"] for item in participating}
+        for event in requested_events:
+            if event["id"] in existing_participating: continue
+            target=f"actor-dashboard.html?event={event['id']}" if event['participation_status'] in ('APPROVED','PARTIALLY_APPROVED') else f"join-actor.html?event={event['id']}"
+            participating.append({"event_id":event["id"],"event_name":event["name"],"category":event["category"],"location":event["location_description"],"starts_at":event["starts_at"],"ends_at":event["ends_at"],"relationship":"REQUESTER","relationship_status":event["participation_status"],"current_phase":event["participation_status"],"last_saved_at":event["participation_updated_at"],"resume_target":target,"requested_assignment_count":event["requested_assignment_count"],"approved_roles":event["approved_roles"],"approved_start":event["approved_start"],"approved_end":event["approved_end"],"published":True})
         draft_items=[{"draft_id":row["id"],"event_name":row["name"],"current_phase":"CREATION_DRAFT","current_step":row["current_step"],"last_saved_at":row["updated_at"],"resume_target":f"create-event.html?draft={row['id']}"} for row in drafts]
         return {"organizing":draft_items+organizing,"participating":participating}
 
@@ -524,11 +581,17 @@ def create_app(database: Database, *, execute_planning_requests: bool = False, g
                     "proposal": proposal,
                     "requirements": actor_service.list_requirements(work_item.id),
                 })
+            participations = connection.execute(
+                """SELECT p.*,a.display_name,a.email FROM participations p
+                   JOIN accounts a ON a.id=p.account_id
+                   WHERE p.event_id=%s AND p.status='ACCEPTED'""", (event_id,)
+            ).fetchall()
         return {
             "event": event,
             "stages": stages,
             "selected_stage": selected_stage,
             "work_items": items,
+            "participations": participations,
         }
 
     @app.post("/actor-requirement-proposals/{proposal_id}/decision")
@@ -546,6 +609,48 @@ def create_app(database: Database, *, execute_planning_requests: bool = False, g
             )
         )
 
+    @app.get("/events/{event_id}/join-options")
+    def get_join_options(event_id: UUID, session: AuthenticatedSession = Depends(authenticated)):
+        return participation_service.join_options(event_id, session.account.id)
+
+    @app.post("/events/{event_id}/participation-advisories", status_code=201)
+    def create_participation_advisory(event_id: UUID, body: AdvisoryRequest, session: AuthenticatedSession = Depends(authenticated)):
+        context = participation_service.advisory_context(event_id, session.account.id, body)
+        result = participation_advisor.generate(context)
+        return participation_service.store_advisory(event_id, session.account.id, body, result)
+
+    @app.post("/events/{event_id}/participation-requests", status_code=201)
+    def create_participation_request(event_id: UUID, body: ParticipationSubmit, session: AuthenticatedSession = Depends(authenticated)):
+        return participation_service.submit(event_id, session.account.id, body)
+
+    @app.get("/participation-requests/{request_id}")
+    def get_participation_request(request_id: UUID, session: AuthenticatedSession = Depends(authenticated)):
+        return participation_service.get_request(request_id, session.account.id)
+
+    @app.get("/events/{event_id}/participation-notifications")
+    def get_participation_notifications(event_id: UUID, session: AuthenticatedSession = Depends(authenticated)):
+        return participation_service.notifications(event_id, session.account.id)
+
+    @app.post("/participation-request-items/{item_id}/decision")
+    def decide_participation_item(item_id: UUID, body: ParticipationDecisionBody, session: AuthenticatedSession = Depends(authenticated)):
+        return participation_service.decide_item(item_id, session.account.id, body.decision, body.idempotency_key)
+
+    @app.get('/events/{event_id}/actor-dashboard')
+    def actor_dashboard(event_id: UUID, session: AuthenticatedSession = Depends(authenticated)):
+        return actor_dashboard_service.get(event_id, session.account.id)
+
+    @app.post('/events/{event_id}/meetings', status_code=201)
+    def create_meeting(event_id: UUID, body: MeetingCreateBody, session: AuthenticatedSession = Depends(authenticated)):
+        return actor_dashboard_service.create_meeting(event_id, session.account.id, body)
+
+    @app.put('/events/{event_id}/meetings/{meeting_id}')
+    def update_meeting(event_id: UUID, meeting_id: UUID, body: MeetingUpdateBody, session: AuthenticatedSession = Depends(authenticated)):
+        return actor_dashboard_service.update_meeting(event_id, meeting_id, session.account.id, body)
+
+    @app.post('/events/{event_id}/announcements', status_code=201)
+    def create_announcement(event_id: UUID, body: AnnouncementBody, session: AuthenticatedSession = Depends(authenticated)):
+        return actor_dashboard_service.announce(event_id, session.account.id, body)
+
     @app.get("/events/{event_id}/setup", response_model=EventSetupSnapshot)
     def get_event_setup(
         event_id: UUID,
@@ -553,6 +658,43 @@ def create_app(database: Database, *, execute_planning_requests: bool = False, g
     ):
         authorization.require_active_organizer(event_id, session.account.id)
         return setup_service.get(event_id, session.account.id)
+
+    @app.get("/events/{event_id}/home")
+    def get_event_home(event_id: UUID, session: AuthenticatedSession = Depends(authenticated)):
+        event = stage_service.base.get_event(event_id)
+        stages = stage_service.list_stages(event_id)
+        with database.connect() as connection:
+            setup_row = connection.execute("SELECT * FROM event_setups WHERE event_id=%s", (event_id,)).fetchone()
+            setup = setup_service._snapshot(event_id, setup_row)
+            membership = connection.execute("SELECT role FROM event_memberships WHERE event_id=%s AND account_id=%s AND status='ACTIVE' ORDER BY CASE role WHEN 'ORGANIZER' THEN 0 ELSE 1 END LIMIT 1", (event_id, session.account.id)).fetchone()
+            if setup.privacy_settings.event_visibility.value == 'PRIVATE' and membership is None:
+                raise AuthorizationError('this event is private')
+            assessment = connection.execute("SELECT id,event_id,version,governance_required,completeness,review_mode,organizer_visible_status,location_context,reasoning_summary,created_at,updated_at FROM governance_assessments WHERE event_id=%s", (event_id,)).fetchone()
+            governance = {"event_id": str(event_id), "assessment": assessment, "items": []}
+            requirements = connection.execute(
+                """SELECT id,event_id,stage_id,work_id,role_category,
+                          canonical_role_name,responsibility_summary,
+                          minimum_required_count,version
+                   FROM actor_requirements WHERE event_id=%s
+                   ORDER BY stage_id,canonical_role_name,id""",
+                (event_id,),
+            ).fetchall()
+            resume = connection.execute(
+                "SELECT current_phase FROM event_resume_states WHERE event_id=%s ORDER BY updated_at DESC LIMIT 1",
+                (event_id,),
+            ).fetchone()
+            organizer = connection.execute(
+                """SELECT a.id,a.display_name,a.email
+                   FROM event_memberships em
+                   JOIN accounts a ON a.id=em.account_id
+                   WHERE em.event_id=%s AND em.role='ORGANIZER' AND em.status='ACTIVE'
+                   ORDER BY em.created_at LIMIT 1""",
+                (event_id,),
+            ).fetchone()
+        return {"event": event, "stages": stages, "actor_requirements": requirements,
+                "setup": setup, "governance": governance, "relationship": membership["role"] if membership else "VISITOR",
+                "organizer": dict(organizer) if organizer else None,
+                "current_phase": resume["current_phase"] if resume else "EVENT_SETUP"}
 
     @app.put("/events/{event_id}/setup", response_model=EventSetupSnapshot)
     def update_event_setup(

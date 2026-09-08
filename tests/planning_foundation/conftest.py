@@ -26,7 +26,9 @@ def database() -> Database:
 def clean_database(database: Database) -> None:
     with database.connect() as connection:
         connection.execute(
-            """TRUNCATE event_setup_updates, event_setups,
+            """TRUNCATE actor_updates, event_meetings, event_notifications, participation_item_decisions, participations, participation_request_items,
+               participation_requests, participation_advisories,
+               event_setup_updates, event_setups,
                event_memberships, auth_sessions, accounts,
                actor_requirements, actor_requirement_requests,
                work_dependencies, work_items, work_design_requests,

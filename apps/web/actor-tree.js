@@ -87,7 +87,8 @@ function renderActorTree() {
         const role = document.createElement('button');
         role.className = `role-node${selectedRole === requirement ? ' selected' : ''}`;
         role.type = 'button';
-        role.innerHTML = `<strong>${actorEsc(requirement.canonical_role_name)}</strong><small>Required: ${Number(requirement.minimum_required_count)}</small>`;
+        const people = (actorData.participations || []).filter(person => person.actor_requirement_id === requirement.id);
+        role.innerHTML = `<strong>${actorEsc(requirement.canonical_role_name)}</strong><small>Required: ${Number(requirement.minimum_required_count)}</small>${people.map(person => `<small class="approved-person">↳ ${actorEsc(person.display_name)}</small>`).join('')}`;
         role.onclick = () => {
           selectedRole = requirement;
           renderActorTree();

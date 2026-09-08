@@ -285,6 +285,121 @@ CREATE TABLE IF NOT EXISTS actor_requirements (
     CHECK (jsonb_typeof(relevant_capabilities) = 'array')
 );
 
+CREATE TABLE IF NOT EXISTS participation_advisories (
+    id uuid PRIMARY KEY,
+    event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    requester_account_id uuid NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    selections jsonb NOT NULL CHECK (jsonb_typeof(selections)='array'),
+    availability jsonb NOT NULL CHECK (jsonb_typeof(availability)='object'),
+    result jsonb NOT NULL CHECK (jsonb_typeof(result)='object'),
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS participation_requests (
+    id uuid PRIMARY KEY,
+    event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    requester_account_id uuid NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    status varchar(40) NOT NULL CHECK (status IN ('PENDING','PARTIALLY_APPROVED','APPROVED','REJECTED','WITHDRAWN_BY_PARTICIPANT','REMOVED_BY_ORGANIZER')),
+    note varchar(2000),
+    advisory_id uuid NOT NULL REFERENCES participation_advisories(id),
+    advisory_summary jsonb NOT NULL CHECK (jsonb_typeof(advisory_summary)='object'),
+    idempotency_key varchar(200) NOT NULL UNIQUE,
+    correlation_id uuid NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS participation_request_items (
+    id uuid PRIMARY KEY,
+    participation_request_id uuid NOT NULL REFERENCES participation_requests(id) ON DELETE CASCADE,
+    stage_id uuid NOT NULL REFERENCES stages(id),
+    work_id uuid NOT NULL REFERENCES work_items(id),
+    actor_requirement_id uuid NOT NULL REFERENCES actor_requirements(id),
+    preference varchar(30) NOT NULL CHECK (preference IN ('PREFERRED','CAN_ALSO_HELP')),
+    availability_type varchar(20) NOT NULL CHECK (availability_type IN ('FULL','PARTIAL','FLEXIBLE')),
+    availability_start timestamptz,
+    availability_end timestamptz,
+    max_commitment_minutes integer CHECK (max_commitment_minutes IS NULL OR max_commitment_minutes > 0),
+    allow_alternative_work boolean NOT NULL DEFAULT false,
+    status varchar(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','APPROVED','REJECTED')),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE(participation_request_id,actor_requirement_id),
+    CHECK ((availability_start IS NULL AND availability_end IS NULL) OR (availability_start IS NOT NULL AND availability_end IS NOT NULL AND availability_end > availability_start))
+);
+
+CREATE TABLE IF NOT EXISTS participations (
+    id uuid PRIMARY KEY,
+    event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    account_id uuid NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    work_id uuid NOT NULL REFERENCES work_items(id),
+    stage_id uuid NOT NULL REFERENCES stages(id),
+    actor_requirement_id uuid NOT NULL REFERENCES actor_requirements(id),
+    approved_from_request_item_id uuid NOT NULL UNIQUE REFERENCES participation_request_items(id),
+    approved_start timestamptz NOT NULL,
+    approved_end timestamptz NOT NULL,
+    status varchar(40) NOT NULL DEFAULT 'ACCEPTED' CHECK (status IN ('ACCEPTED','WITHDRAWN_BY_PARTICIPANT','REMOVED_BY_ORGANIZER')),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (approved_end > approved_start)
+);
+
+CREATE TABLE IF NOT EXISTS participation_item_decisions (
+    id uuid PRIMARY KEY,
+    request_item_id uuid NOT NULL REFERENCES participation_request_items(id) ON DELETE CASCADE,
+    organizer_id uuid NOT NULL REFERENCES accounts(id),
+    decision varchar(20) NOT NULL CHECK (decision IN ('APPROVE','REJECT')),
+    idempotency_key varchar(200) NOT NULL UNIQUE,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS event_notifications (
+    id uuid PRIMARY KEY,
+    account_id uuid NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    notification_type varchar(50) NOT NULL CHECK (notification_type='PARTICIPATION_REQUEST'),
+    participation_request_id uuid NOT NULL REFERENCES participation_requests(id) ON DELETE CASCADE,
+    is_read boolean NOT NULL DEFAULT false,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE(account_id,participation_request_id)
+);
+
+CREATE INDEX IF NOT EXISTS participation_requests_actor_idx ON participation_requests(requester_account_id,updated_at DESC);
+CREATE INDEX IF NOT EXISTS participations_actor_idx ON participations(account_id,event_id);
+
+CREATE TABLE IF NOT EXISTS event_meetings (
+    id uuid PRIMARY KEY,
+    event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    title varchar(200) NOT NULL CHECK (length(btrim(title)) > 0),
+    meeting_type varchar(30) NOT NULL CHECK (meeting_type IN ('BRIEFING','COORDINATION','HANDOFF','CHECK_IN','REVIEW','OTHER')),
+    start_time timestamptz NOT NULL,
+    end_time timestamptz NOT NULL,
+    location varchar(500), note text,
+    audience varchar(30) NOT NULL CHECK (audience IN ('ALL_ACTORS','STAGE','WORK','ROLE','SPECIFIC_ACTORS')),
+    stage_id uuid REFERENCES stages(id), work_id uuid REFERENCES work_items(id),
+    actor_requirement_id uuid REFERENCES actor_requirements(id),
+    specific_actor_ids jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(specific_actor_ids)='array'),
+    status varchar(20) NOT NULL DEFAULT 'SCHEDULED' CHECK (status IN ('SCHEDULED','RESCHEDULED','CANCELLED')),
+    version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+    created_by uuid NOT NULL REFERENCES accounts(id),
+    created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (end_time > start_time)
+);
+
+CREATE TABLE IF NOT EXISTS actor_updates (
+    id uuid PRIMARY KEY,
+    event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    recipient_account_id uuid REFERENCES accounts(id) ON DELETE CASCADE,
+    audience varchar(30) NOT NULL CHECK (audience IN ('ACTOR','ALL_ACTORS')),
+    update_type varchar(40) NOT NULL CHECK (update_type IN ('PARTICIPATION_DECISION','ORGANIZER_ANNOUNCEMENT','MEETING_UPDATE')),
+    title varchar(200) NOT NULL, message text NOT NULL,
+    priority varchar(20) NOT NULL DEFAULT 'NORMAL' CHECK (priority IN ('LOW','NORMAL','HIGH')),
+    meeting_id uuid REFERENCES event_meetings(id) ON DELETE CASCADE,
+    read_at timestamptz, created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS event_meetings_event_time_idx ON event_meetings(event_id,start_time);
+CREATE INDEX IF NOT EXISTS actor_updates_recipient_idx ON actor_updates(event_id,recipient_account_id,created_at DESC);
+
 CREATE TABLE IF NOT EXISTS domain_outbox (
     id uuid PRIMARY KEY,
     event_type varchar(200) NOT NULL,

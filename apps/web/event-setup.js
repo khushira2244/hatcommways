@@ -120,6 +120,23 @@ document.querySelector('#setup-form').onsubmit = async event => {
   } finally { button.disabled = false; }
 };
 
+document.querySelector('#open-event').onclick = async () => {
+  const button = document.querySelector('#open-event');
+  const message = document.querySelector('#setup-message');
+  if (!document.querySelector('#setup-form').reportValidity()) return;
+  button.disabled = true;
+  try {
+    setupState = await api(`/events/${setupEventId}/setup`, {method:'PUT',body:JSON.stringify({...snapshot(),expected_version:setupState.version,idempotency_key:crypto.randomUUID()})});
+    await api(`/events/${setupEventId}/resume-state`, {method:'PUT',body:JSON.stringify({current_phase:'READY',last_open_stage_id:null})});
+    location.assign(`./event.html?event=${encodeURIComponent(setupEventId)}`);
+  } catch (error) {
+    if (error.status === 409) await loadSetup();
+    message.textContent = error.status === 409 ? 'The latest setup was reloaded. Review it before continuing.' : error.message;
+    message.className = 'error';
+    button.disabled = false;
+  }
+};
+
 initializeSetup();
 installSaveExit(setupEventId, 'EVENT_SETUP', setupStageId, async()=>{
   if (!document.querySelector('#setup-form').reportValidity()) throw new Error('Review the highlighted setup fields before saving.');

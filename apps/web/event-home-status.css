@@ -1,0 +1,4 @@
+.governance-compact{display:flex;align-items:center;gap:8px;margin:-7px 0 12px;font-size:.78rem}
+.governance-compact span{color:var(--eh-muted)}
+.governance-compact a{font-weight:800;color:#976000}
+.notification-panel{position:absolute;z-index:20;right:3.5%;top:66px;width:min(430px,93vw);padding:16px;border:1px solid #dbe4ea;border-radius:10px;background:#fff;box-shadow:0 10px 30px #10204722}.notification-panel h2{margin:0 0 10px}.notification-request{padding:10px 0;border-top:1px solid #e5ebef}.notification-request:first-child{border-top:0}.notification-request small,.notification-request strong{display:block}.notification-actions{display:flex;gap:8px;margin-top:6px}.notification-actions button{padding:6px 10px;border:1px solid #b8cbe8;border-radius:6px;background:#fff}.notification-actions .approve{color:#08783f;border-color:#59b987}
