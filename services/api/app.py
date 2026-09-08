@@ -251,17 +251,27 @@ def create_app(database: Database, *, execute_planning_requests: bool = False, g
             request = connection.execute(
                 """
                 SELECT * FROM event_planning_requests
-                WHERE event_id=%s AND proposal_id IS NOT NULL
+                WHERE event_id=%s
                 ORDER BY created_at DESC LIMIT 1
                 """,
                 (event_id,),
             ).fetchone()
         proposal = (
             stage_service.base.get_proposal(request["proposal_id"])
-            if request is not None else None
+            if request is not None and request["proposal_id"] is not None else None
         )
+        if stages:
+            mode = "CONFIRMED"
+        elif proposal is not None and proposal.status.value == "PENDING":
+            mode = "PROPOSAL"
+        elif request is not None and request["status"] in ("REQUESTED", "RUNNING"):
+            mode = "RUNNING"
+        elif request is not None and request["status"] == "FAILED":
+            mode = "FAILED"
+        else:
+            mode = "EMPTY"
         return {
-            "mode": "CONFIRMED" if stages else "PROPOSAL",
+            "mode": mode,
             "event": event,
             "planning_request": request,
             "proposal": proposal,

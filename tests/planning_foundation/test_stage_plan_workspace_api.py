@@ -24,10 +24,29 @@ def test_workspace_reads_pending_then_authoritative_confirmed_stages(database):
     body = command.model_dump(mode="json", exclude={"organizer_id"}) | {"idempotency_key":"workspace-event"}
     event = client.post("/events", headers=headers, json=body).json()
     service = StagePlanningService(database)
+
+    empty = client.get(f"/events/{event['id']}/stage-plan-workspace", headers=headers)
+    refreshed_empty = client.get(f"/events/{event['id']}/stage-plan-workspace", headers=headers)
+    assert empty.status_code == 200
+    assert empty.json()["mode"] == "EMPTY"
+    assert empty.json()["planning_request"] is None
+    assert empty.json()["proposal"] is None
+    assert refreshed_empty.json()["mode"] == "EMPTY"
+    with database.connect() as connection:
+        assert connection.execute(
+            "SELECT count(*) AS count FROM event_planning_requests WHERE event_id=%s",
+            (UUID(event["id"]),),
+        ).fetchone()["count"] == 0
+
     request = service.request_event_planning(
         event_id=UUID(event["id"]), organizer_id=UUID(account["id"]),
         expected_event_version=1, idempotency_key="workspace-request",
     )
+    running = client.get(f"/events/{event['id']}/stage-plan-workspace", headers=headers)
+    assert running.status_code == 200
+    assert running.json()["mode"] == "RUNNING"
+    assert running.json()["planning_request"]["status"] == "REQUESTED"
+    assert running.json()["proposal"] is None
     service.begin_request(request.id)
     proposal = StagePlanProposal.model_validate({
         "proposal_id":"50000000-0000-0000-0000-000000000001",
