@@ -349,7 +349,7 @@ def create_app(database: Database, *, execute_planning_requests: bool = False, g
                 with database.connect() as connection:
                     incomplete = connection.execute("""SELECT s.id FROM stages s WHERE s.event_id=%s AND NOT EXISTS(SELECT 1 FROM work_items w WHERE w.stage_id=s.id) ORDER BY s.stage_order LIMIT 1""", (event["id"],)).fetchone()
                 stage_id = incomplete["id"] if incomplete else None
-            routes={"GOVERNANCE":f"governance.html?event={event['id']}","STAGE_PLANNING":f"planning.html?event={event['id']}","WORK_DESIGN":f"stage.html?event={event['id']}&id={stage_id}" if stage_id else f"planning.html?event={event['id']}","ACTOR_REQUIREMENTS":f"actor-tree.html?event={event['id']}&stage={stage_id}" if stage_id else f"planning.html?event={event['id']}","EVENT_SETUP":f"event-setup.html?event={event['id']}","READY":f"event.html?event={event['id']}","PUBLISHED":f"event.html?event={event['id']}"}
+            routes={"GOVERNANCE":f"governance.html?event={event['id']}","STAGE_PLANNING":f"planning.html?event={event['id']}","WORK_DESIGN":f"stage.html?event={event['id']}&id={stage_id}" if stage_id else f"planning.html?event={event['id']}","ACTOR_REQUIREMENTS":f"actor-tree.html?event={event['id']}","EVENT_SETUP":f"event-setup.html?event={event['id']}","READY":f"event.html?event={event['id']}","PUBLISHED":f"event.html?event={event['id']}"}
             item={"event_id":event["id"],"event_name":event["name"],"category":event["category"],"location":event["location_description"],"starts_at":event["starts_at"],"ends_at":event["ends_at"],"relationship":event["role"],"relationship_status":event["relationship_status"],"current_phase":phase,"last_saved_at":event["resume_updated_at"] or event["updated_at"],"resume_target":routes.get(phase,routes["GOVERNANCE"]),"last_open_stage_id":stage_id,"governance_status":event["governance_status"],"stage_count":event["stage_count"],"work_count":event["work_count"],"actor_requirement_count":event["actor_requirement_count"],"event_setup_status":"SAVED" if event["setup_saved"] else "NOT_STARTED","published":phase=="PUBLISHED"}
             (organizing if event["role"]=="ORGANIZER" else participating).append(item)
         existing_participating={item["event_id"] for item in participating}
@@ -545,6 +545,14 @@ def create_app(database: Database, *, execute_planning_requests: bool = False, g
         if execute_planning_requests and actor_request.status.value == "REQUESTED":
             actor_workflow.execute(actor_request.id)
         return actor_service.get_request(actor_request.id)
+
+    @app.get("/events/{event_id}/actor-tree-workspace")
+    def get_event_actor_tree_workspace(
+        event_id: UUID,
+        session: AuthenticatedSession = Depends(authenticated),
+    ):
+        authorization.require_active_organizer(event_id, session.account.id)
+        return actor_service.event_workspace(event_id)
 
     @app.get("/events/{event_id}/stages/{stage_id}/actor-tree-workspace")
     def get_actor_tree_workspace(

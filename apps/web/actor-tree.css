@@ -42,42 +42,34 @@ body{margin:0;background:#f8faf9;color:var(--tree-ink)}
 @media(max-width:800px){.app-nav{display:none}.actor-page{width:calc(100% - 24px)}.actor-heading,.actor-actions{align-items:stretch;flex-direction:column}.actor-actions>div{margin-right:0}.tree-card{padding:14px}.stage-tree{gap:12px}.stage-branch{width:230px}}
 @media(max-width:560px){.app-header{padding:7px 14px}.brand-logo{width:174px;height:46px}.actor-account>div{display:none}.actor-heading h1{font-size:1.45rem}}
 
-/* Compact, progressive actor hierarchy */
-.actor-page{width:min(100% - 64px,1460px)}
-.actor-heading{margin-bottom:18px}
-.actor-heading h1{font-size:2rem}
-.actor-actions{min-height:76px;padding:14px 20px;justify-content:flex-end}
-.actor-workspace{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}
-.tree-card{min-height:570px;padding:22px;overflow:auto}
-.tree-card h2{margin-bottom:20px}
-.event-root,.stage-node,.role-node{font:inherit;color:inherit;cursor:pointer}
-.event-root{display:block}
-.event-root strong,.event-root small{display:block}
-.stage-tree{grid-template-columns:repeat(var(--stage-count),minmax(210px,1fr));gap:16px;width:100%}
-.stage-branch{width:auto;min-width:210px}
-.stage-node{width:100%;min-height:74px}
-.stage-node:hover,.role-node:hover{border-color:#76a9ff}
-.stage-branch.selected{padding-bottom:104px}
-.role-list{display:grid;grid-template-columns:repeat(var(--role-count),minmax(0,1fr));gap:10px;position:absolute;top:90px;left:0;width:calc(var(--tree-width) + var(--tree-gap));margin-left:calc(var(--role-offset) + var(--role-gap-offset));padding-top:18px}
-.role-list:before{content:"";position:absolute;top:0;left:8%;right:8%;height:2px;background:#b9ccc2}
-.role-node{position:relative;display:block;width:100%;min-height:64px;padding:10px;border:1px solid #cfdcd6;text-align:center}
-.role-node:before{content:"";position:absolute;top:-18px;left:50%;width:2px;height:18px;background:#b9ccc2}
-.role-node strong,.role-node small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.role-node small{margin-top:5px;color:var(--tree-muted)}
-.role-node.selected{border-color:#2c83ff;background:#edf5ff;box-shadow:0 0 0 1px #2c83ff}
-.actor-sidebar{display:grid;gap:18px}
-.side-card{padding:18px;border:1px solid var(--tree-line);border-radius:12px;background:#fff}
-.side-card h2{display:flex;gap:9px;align-items:center;margin:0 0 14px;padding-bottom:13px;border-bottom:1px solid #e2e8e5;font-size:1.1rem}
-.side-card h2:first-letter{color:#2587ff}
+/* One event tree: each stage owns its compact sibling role list. */
+.actor-actions{min-height:0;padding:0;border:0;background:transparent;justify-content:flex-start;flex-wrap:wrap;gap:8px}
+.actor-actions .button{min-height:36px;padding:8px 14px;font-size:.82rem;box-shadow:none}
+.actor-workspace{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:16px;align-items:start}
+.actor-workspace>*{min-width:0}
+.tree-card{padding:18px;min-height:0}
+.event-root{display:block;max-width:100%;min-width:0;white-space:normal}
+.stage-tree{grid-template-columns:repeat(var(--stage-count),minmax(190px,1fr));gap:16px;min-width:100%;align-items:start}
+.stage-branch{width:auto;min-width:190px}
+.stage-node{width:100%;min-height:62px;padding:10px;cursor:pointer;font:inherit}
+.stage-node strong{font-size:.86rem;overflow-wrap:break-word}
+.stage-node small{font-size:.72rem;line-height:1.35}
+.stage-branch.selected .stage-node{border:1px solid #75ac8b;background:#edf7f1;box-shadow:0 0 0 1px #75ac8b}
+.role-list{position:relative;display:grid;gap:8px;margin:12px 0 0 10px;padding-left:13px;border-left:1px solid #b9ccc2}
+.role-list:empty{display:none}
+.role-node{position:relative;width:100%;min-height:0;padding:9px 11px;text-align:left;cursor:pointer;font:inherit}
+.role-node:before{content:"";position:absolute;left:-14px;top:50%;width:13px;height:1px;background:#b9ccc2}
+.role-node strong,.role-node small{display:block;white-space:normal;overflow-wrap:break-word;line-height:1.35}
+.role-node small{margin-top:4px}
+.role-node.selected{border-color:#75ac8b;background:#edf7f1}
+.stage-node:focus-visible,.role-node:focus-visible{outline:2px solid #258653;outline-offset:2px}
+.side-card{padding:15px;border:1px solid var(--tree-line);border-radius:12px;background:#fff;font-size:.8rem}
+.side-card h2{font-size:.95rem;margin:0 0 10px}
 .side-card dl{margin:0}
-.side-card dl>div{display:grid;grid-template-columns:1fr 1.25fr;gap:12px;padding:11px 0;border-bottom:1px solid #e8eeeb}
+.side-card dl>div{display:grid;grid-template-columns:1fr 1.2fr;gap:10px;padding:8px 0;border-bottom:1px solid #edf1ef}
 .side-card dl>div:last-child{border:0}
 .side-card dt{color:var(--tree-muted)}
-.side-card dd{margin:0;overflow-wrap:anywhere}
-.plan-status{display:inline-block;padding:5px 12px;border-radius:99px;background:#e4f7ec;color:#087d40;font-weight:800}
-.next-action{display:grid;gap:12px}
-.next-action h2{margin-bottom:0}
-.next-action .button{width:100%;text-align:center}
-.next-action .button:disabled{opacity:.58;cursor:not-allowed}
-@media(max-width:980px){.actor-page{width:calc(100% - 32px)}.actor-workspace{grid-template-columns:1fr}.actor-sidebar{grid-template-columns:repeat(2,minmax(0,1fr))}.tree-card{min-height:480px}}
-@media(max-width:640px){.actor-sidebar{grid-template-columns:1fr}.actor-heading h1{font-size:1.55rem}.actor-page{width:calc(100% - 24px)}.stage-tree{gap:12px}.stage-branch{min-width:205px}}
+.side-card dd{margin:0;overflow-wrap:break-word}
+.actor-actions button:disabled{opacity:.6;cursor:not-allowed}
+@media(max-width:980px){.actor-workspace{grid-template-columns:minmax(0,1fr)}.actor-sidebar dl{display:flex;flex-wrap:wrap;gap:12px}.side-card dl>div{min-width:150px;flex:1;border:0;display:block}.side-card dd{margin-top:4px}}
+@media(max-width:800px){.actor-actions{flex-direction:row;align-items:center}.stage-branch{width:auto}.actor-actions .button{white-space:normal}}

@@ -54,16 +54,19 @@ class ActorRequirementService:
         request_id = uuid4()
         correlation_id = correlation_id or uuid4()
         with self.database.connect() as connection:
+            # Serialize competing event requests before checking the idempotency key.
+            event, stage, work = self._lock_hierarchy(
+                connection, event_id, stage_id, work_id
+            )
+            PlanningService._require_organizer(event, organizer_id)
             existing = connection.execute(
                 "SELECT * FROM actor_requirement_requests WHERE idempotency_key = %s",
                 (idempotency_key,),
             ).fetchone()
             if existing is not None:
+                if (existing["event_id"], existing["stage_id"], existing["work_id"], existing["organizer_id"]) != (event_id, stage_id, work_id, organizer_id):
+                    raise ValidationError("idempotency key belongs to another actor requirement request")
                 return ActorRequirementRequest.model_validate(existing)
-            event, stage, work = self._lock_hierarchy(
-                connection, event_id, stage_id, work_id
-            )
-            PlanningService._require_organizer(event, organizer_id)
             self._require_versions(
                 event, stage, work,
                 expected_event_version, expected_stage_version, expected_work_version,
@@ -85,11 +88,11 @@ class ActorRequirementService:
                 """
                 SELECT 1 FROM proposals
                 WHERE target_id = %s AND proposal_type = 'ACTOR_REQUIREMENT'
-                  AND status = 'PENDING' LIMIT 1
+                  AND status IN ('PENDING', 'APPROVED') LIMIT 1
                 """,
                 (work_id,),
             ).fetchone():
-                raise ValidationError("actor requirements are already pending approval")
+                raise ValidationError("actor requirements are already pending or approved")
             row = connection.execute(
                 """
                 INSERT INTO actor_requirement_requests (
@@ -419,6 +422,36 @@ class ActorRequirementService:
             work_version=updated_work["version"],
         )
 
+    def event_workspace(self, event_id: UUID) -> dict[str, Any]:
+        event = self.base.get_event(event_id)
+        with self.database.connect() as connection:
+            stages = connection.execute(
+                "SELECT * FROM stages WHERE event_id=%s ORDER BY stage_order", (event_id,)
+            ).fetchall()
+            work = connection.execute(
+                "SELECT * FROM work_items WHERE event_id=%s ORDER BY stage_id, created_at, id", (event_id,)
+            ).fetchall()
+            items = []
+            for target in work:
+                request = connection.execute(
+                    "SELECT * FROM actor_requirement_requests WHERE work_id=%s ORDER BY created_at DESC, id DESC LIMIT 1",
+                    (target["id"],),
+                ).fetchone()
+                # Approved empty structures are still confirmed; pending empty
+                # proposals still need a decision. Do not infer state from role count.
+                proposal = connection.execute(
+                    """SELECT * FROM proposals WHERE target_id=%s AND proposal_type='ACTOR_REQUIREMENT'
+                       ORDER BY CASE status WHEN 'APPROVED' THEN 0 WHEN 'PENDING' THEN 1 ELSE 2 END,
+                                created_at DESC, id DESC LIMIT 1""", (target["id"],),
+                ).fetchone()
+                items.append({
+                    "work": self._work_snapshot(target),
+                    "actor_requirement_request": request,
+                    "proposal": proposal,
+                    "requirements": self._list_requirements(connection, target["id"]),
+                })
+        return {"event": event, "stages": [self._stage_snapshot(stage) for stage in stages], "work_items": items}
+
     def get_request(self, request_id: UUID) -> ActorRequirementRequest:
         with self.database.connect() as connection:
             row = connection.execute(
@@ -451,11 +484,17 @@ class ActorRequirementService:
             return False
         event_delta = event["version"] - expected["event"]
         stage_delta = stage["version"] - expected["stage"]
-        if event_delta <= 0 or event_delta != stage_delta:
+        if event_delta <= 0 or stage_delta < 0:
             return False
+        # Every intervening event version must be a sibling role approval. Only
+        # approvals in this stage may account for its own version changes.
         row = connection.execute(
             """
-            SELECT count(*) AS count
+            SELECT count(DISTINCT decision.applied_event_version) AS event_count,
+                   count(DISTINCT (decision.application_result->>'stage_version')::integer)
+                     FILTER (WHERE sibling_work.stage_id = %s
+                       AND (decision.application_result->>'stage_version')::integer > %s
+                       AND (decision.application_result->>'stage_version')::integer <= %s) AS stage_count
             FROM proposal_decisions decision
             JOIN proposals sibling ON sibling.id = decision.proposal_id
             JOIN work_items sibling_work ON sibling_work.id = sibling.target_id
@@ -463,18 +502,15 @@ class ActorRequirementService:
               AND sibling.proposal_type = 'ACTOR_REQUIREMENT'
               AND sibling.status = 'APPROVED'
               AND sibling.id <> %s
-              AND sibling_work.stage_id = %s
+              AND sibling_work.id <> %s
+              AND sibling_work.event_id = %s
               AND decision.applied_event_version > %s
               AND decision.applied_event_version <= %s
-              AND (decision.application_result->>'stage_version')::integer > %s
-              AND (decision.application_result->>'stage_version')::integer <= %s
             """,
-            (
-                proposal["id"], stage["id"], expected["event"], event["version"],
-                expected["stage"], stage["version"],
-            ),
+            (stage["id"], expected["stage"], stage["version"], proposal["id"],
+             work["id"], event["id"], expected["event"], event["version"]),
         ).fetchone()
-        return row["count"] == event_delta
+        return row["event_count"] == event_delta and row["stage_count"] == stage_delta
 
     @staticmethod
     def _lock_request(connection, request_id: UUID) -> dict[str, Any]:

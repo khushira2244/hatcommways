@@ -82,7 +82,7 @@ async function initializeSetup() {
     document.querySelector('#setup-account-type').textContent = account.account_type === 'ORGANIZATION' ? 'Organization' : 'Individual';
     document.querySelector('#setup-avatar').textContent = account.display_name.charAt(0).toUpperCase();
     document.querySelector('#setup-event-name').textContent = workspace.event.name;
-    document.querySelector('#setup-back').href = setupStageId ? `./actor-tree.html?event=${encodeURIComponent(setupEventId)}&stage=${encodeURIComponent(setupStageId)}` : './app.html';
+    document.querySelector('#setup-back').href = `./actor-tree.html?event=${encodeURIComponent(setupEventId)}`;
     await loadSetup();
     setupRoot.hidden = false;
   } catch (error) {
