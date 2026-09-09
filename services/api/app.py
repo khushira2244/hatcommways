@@ -35,6 +35,11 @@ from services.agent_runtime.actor_requirement import (
     StrandsActorRequirementAgent,
 )
 from services.agent_runtime.governance import GovernanceWorkflow, StrandsGovernanceAgent
+from services.agent_runtime.human_update_interpretation import (
+    HumanUpdateInterpretationRuntime,
+    HumanUpdateInterpretationWorkflow,
+    StrandsHumanUpdateInterpretationAgent,
+)
 from services.agent_runtime.participation_advisory import DeterministicParticipationAdvisory, StrandsParticipationAdvisoryAgent
 from services.planning_foundation.governance_service import GovernanceService
 from services.planning_foundation.governance_evidence_storage import LocalGovernanceEvidenceStorage, MAX_EVIDENCE_BYTES
@@ -49,6 +54,8 @@ from services.planning_foundation.errors import (
     PlanningError,
     ProposalAlreadyDecidedError,
     StaleProposalError,
+    StaleVersionError,
+    IdempotencyConflictError,
     ValidationError,
 )
 from services.planning_foundation.models import (
@@ -63,6 +70,17 @@ from services.planning_foundation.tools import ScopedPlanningReadTools
 from services.planning_foundation.participation_models import AdvisoryRequest, ParticipationSubmit, ParticipationDecisionBody
 from services.planning_foundation.participation_service import ParticipationService
 from services.planning_foundation.actor_dashboard_service import ActorDashboardService
+from services.planning_foundation.human_update_service import HumanUpdateService
+from services.planning_foundation.human_update_interpretation_service import HumanUpdateInterpretationService
+from services.planning_foundation.human_update_models import (
+    BlockerCreate,
+    BlockerPatch,
+    BlockerSnapshot,
+    HumanUpdateCreate,
+    HumanUpdateInterpretationSnapshot,
+    HumanUpdateSnapshot,
+    InterpretHumanUpdateRequest,
+)
 
 class MeetingCreateBody(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -154,7 +172,13 @@ class ResumeStateBody(BaseModel):
     last_open_stage_id: UUID | None = None
 
 
-def create_app(database: Database, *, execute_planning_requests: bool = False, governance_upload_root: Path | None = None) -> FastAPI:
+def create_app(
+    database: Database,
+    *,
+    execute_planning_requests: bool = False,
+    governance_upload_root: Path | None = None,
+    human_update_interpretation_runtime: HumanUpdateInterpretationRuntime | None = None,
+) -> FastAPI:
     app = FastAPI(title="Hatcommways API", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,
@@ -178,6 +202,17 @@ def create_app(database: Database, *, execute_planning_requests: bool = False, g
     actor_service = ActorRequirementService(database)
     participation_service = ParticipationService(database)
     actor_dashboard_service = ActorDashboardService(database)
+    human_update_service = HumanUpdateService(database)
+    human_update_interpretation_service = HumanUpdateInterpretationService(database)
+    interpretation_runtime = human_update_interpretation_runtime or StrandsHumanUpdateInterpretationAgent(
+        human_update_interpretation_service
+    )
+    human_update_interpretation_workflow = HumanUpdateInterpretationWorkflow(
+        human_update_interpretation_service, interpretation_runtime
+    )
+    interpretation_execution_enabled = (
+        execute_planning_requests or human_update_interpretation_runtime is not None
+    )
     participation_advisor = StrandsParticipationAdvisoryAgent() if execute_planning_requests else DeterministicParticipationAdvisory()
     setup_service = EventSetupService(database)
     governance_service = GovernanceService(database)
@@ -207,7 +242,7 @@ def create_app(database: Database, *, execute_planning_requests: bool = False, g
             return _error_response(403, str(error))
         if isinstance(error, NotFoundError):
             return _error_response(404, str(error))
-        if isinstance(error, (StaleProposalError, ProposalAlreadyDecidedError)):
+        if isinstance(error, (StaleProposalError, ProposalAlreadyDecidedError, StaleVersionError, IdempotencyConflictError)):
             return _error_response(409, str(error))
         return _error_response(422, str(error))
 
@@ -642,6 +677,58 @@ def create_app(database: Database, *, execute_planning_requests: bool = False, g
     @app.post("/participation-request-items/{item_id}/decision")
     def decide_participation_item(item_id: UUID, body: ParticipationDecisionBody, session: AuthenticatedSession = Depends(authenticated)):
         return participation_service.decide_item(item_id, session.account.id, body.decision, body.idempotency_key)
+
+    @app.post('/events/{event_id}/human-updates', status_code=201, response_model=HumanUpdateSnapshot)
+    def submit_human_update(event_id: UUID, body: HumanUpdateCreate, session: AuthenticatedSession = Depends(authenticated)):
+        return human_update_service.submit(event_id, session.account.id, body)
+
+    @app.get('/events/{event_id}/human-updates', response_model=list[HumanUpdateSnapshot])
+    def list_human_updates(event_id: UUID, session: AuthenticatedSession = Depends(authenticated)):
+        return human_update_service.list_updates(event_id, session.account.id)
+
+    @app.post(
+        '/events/{event_id}/human-updates/{update_id}/interpret',
+        response_model=HumanUpdateInterpretationSnapshot,
+    )
+    def interpret_human_update(
+        event_id: UUID,
+        update_id: UUID,
+        body: InterpretHumanUpdateRequest = InterpretHumanUpdateRequest(),
+        session: AuthenticatedSession = Depends(authenticated),
+    ):
+        if not interpretation_execution_enabled:
+            raise ValidationError('human update interpretation agent execution is disabled')
+        return human_update_interpretation_workflow.execute(
+            event_id=event_id,
+            update_id=update_id,
+            organizer_id=session.account.id,
+            retry=body.retry,
+        )
+
+    @app.get(
+        '/events/{event_id}/human-updates/{update_id}/interpretation',
+        response_model=HumanUpdateInterpretationSnapshot | None,
+    )
+    def get_human_update_interpretation(
+        event_id: UUID,
+        update_id: UUID,
+        session: AuthenticatedSession = Depends(authenticated),
+    ):
+        return human_update_interpretation_service.get_interpretation(
+            event_id, update_id, session.account.id
+        )
+
+    @app.post('/events/{event_id}/blockers', status_code=201, response_model=BlockerSnapshot)
+    def create_blocker(event_id: UUID, body: BlockerCreate, session: AuthenticatedSession = Depends(authenticated)):
+        return human_update_service.create_blocker(event_id, session.account.id, body)
+
+    @app.get('/events/{event_id}/blockers', response_model=list[BlockerSnapshot])
+    def list_blockers(event_id: UUID, session: AuthenticatedSession = Depends(authenticated)):
+        return human_update_service.list_blockers(event_id, session.account.id)
+
+    @app.patch('/events/{event_id}/blockers/{blocker_id}', response_model=BlockerSnapshot)
+    def update_blocker(event_id: UUID, blocker_id: UUID, body: BlockerPatch, session: AuthenticatedSession = Depends(authenticated)):
+        return human_update_service.update_blocker(event_id, blocker_id, session.account.id, body)
 
     @app.get('/events/{event_id}/actor-dashboard')
     def actor_dashboard(event_id: UUID, session: AuthenticatedSession = Depends(authenticated)):

@@ -23,3 +23,10 @@ class StaleProposalError(PlanningError):
 
 class ProposalAlreadyDecidedError(PlanningError):
     pass
+
+class StaleVersionError(PlanningError):
+    pass
+
+
+class IdempotencyConflictError(PlanningError):
+    pass

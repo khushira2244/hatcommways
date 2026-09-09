@@ -472,3 +472,133 @@ CREATE TABLE IF NOT EXISTS governance_tickets (
     decision text, decision_reason text,
     created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Human reports are distinct from organizer announcements in actor_updates.
+CREATE TABLE IF NOT EXISTS human_updates (
+    id uuid PRIMARY KEY,
+    event_id uuid NOT NULL REFERENCES events(id),
+    reporter_account_id uuid NOT NULL REFERENCES accounts(id),
+    source_type varchar(20) NOT NULL CHECK (source_type IN ('ACTOR','ORGANIZER')),
+    stage_id uuid REFERENCES stages(id),
+    work_id uuid REFERENCES work_items(id),
+    actor_requirement_id uuid REFERENCES actor_requirements(id),
+    participation_id uuid REFERENCES participations(id),
+    original_text text NOT NULL CHECK (length(btrim(original_text)) > 0 AND length(original_text) <= 10000),
+    idempotency_key varchar(200),
+    interpretation_status varchar(20) NOT NULL DEFAULT 'NOT_REQUESTED',
+    interpreted_at timestamptz,
+    interpretation_failed_at timestamptz,
+    interpretation_failure_code varchar(100),
+    interpretation_attempt_count integer NOT NULL DEFAULT 0 CHECK (interpretation_attempt_count >= 0),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+    UNIQUE(id,event_id),
+    UNIQUE(event_id,reporter_account_id,idempotency_key)
+);
+ALTER TABLE human_updates DROP CONSTRAINT IF EXISTS human_updates_interpretation_status_check;
+ALTER TABLE human_updates DROP CONSTRAINT IF EXISTS human_updates_interpretation_lifecycle_check;
+ALTER TABLE human_updates DROP CONSTRAINT IF EXISTS human_updates_check;
+ALTER TABLE human_updates ADD COLUMN IF NOT EXISTS interpretation_failed_at timestamptz;
+ALTER TABLE human_updates ADD COLUMN IF NOT EXISTS interpretation_failure_code varchar(100);
+ALTER TABLE human_updates ADD COLUMN IF NOT EXISTS interpretation_attempt_count integer NOT NULL DEFAULT 0;
+ALTER TABLE human_updates DROP CONSTRAINT IF EXISTS human_updates_interpretation_attempt_count_check;
+ALTER TABLE human_updates ADD CONSTRAINT human_updates_interpretation_attempt_count_check
+    CHECK (interpretation_attempt_count >= 0);
+UPDATE human_updates SET interpretation_status='FAILED',interpreted_at=NULL,
+    interpretation_failed_at=COALESCE(interpretation_failed_at,now()),
+    interpretation_failure_code=COALESCE(interpretation_failure_code,'LEGACY_INTERPRETATION_UNAVAILABLE'),
+    interpretation_attempt_count=GREATEST(interpretation_attempt_count,1)
+WHERE interpretation_status IN ('SUCCEEDED','FAILED');
+UPDATE human_updates SET interpretation_attempt_count=GREATEST(interpretation_attempt_count,1)
+WHERE interpretation_status IN ('RUNNING','INTERPRETED');
+ALTER TABLE human_updates ADD CONSTRAINT human_updates_interpretation_status_check
+    CHECK (interpretation_status IN ('NOT_REQUESTED','RUNNING','INTERPRETED','FAILED'));
+ALTER TABLE human_updates ADD CONSTRAINT human_updates_interpretation_lifecycle_check CHECK (
+    (interpretation_status='NOT_REQUESTED' AND interpreted_at IS NULL
+        AND interpretation_failed_at IS NULL AND interpretation_failure_code IS NULL)
+ OR (interpretation_status='RUNNING' AND interpreted_at IS NULL
+        AND interpretation_failed_at IS NULL AND interpretation_failure_code IS NULL)
+ OR (interpretation_status='INTERPRETED' AND interpreted_at IS NOT NULL
+        AND interpretation_failed_at IS NULL AND interpretation_failure_code IS NULL)
+ OR (interpretation_status='FAILED' AND interpreted_at IS NULL
+        AND interpretation_failed_at IS NOT NULL AND interpretation_failure_code IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS human_updates_event_created_idx ON human_updates(event_id,created_at DESC);
+
+CREATE OR REPLACE FUNCTION preserve_human_report() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF ROW(NEW.id, NEW.original_text, NEW.reporter_account_id, NEW.event_id, NEW.source_type,
+           NEW.stage_id, NEW.work_id, NEW.actor_requirement_id, NEW.participation_id,
+           NEW.created_at, NEW.idempotency_key)
+       IS DISTINCT FROM
+       ROW(OLD.id, OLD.original_text, OLD.reporter_account_id, OLD.event_id, OLD.source_type,
+           OLD.stage_id, OLD.work_id, OLD.actor_requirement_id, OLD.participation_id,
+           OLD.created_at, OLD.idempotency_key) THEN
+        RAISE EXCEPTION 'original human report and attribution are immutable' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE OR REPLACE TRIGGER human_updates_immutable_report
+    BEFORE UPDATE ON human_updates FOR EACH ROW EXECUTE FUNCTION preserve_human_report();
+
+CREATE TABLE IF NOT EXISTS human_update_interpretations (
+    id uuid PRIMARY KEY,
+    human_update_id uuid NOT NULL UNIQUE,
+    event_id uuid NOT NULL,
+    interpretation_type varchar(40) NOT NULL CHECK (interpretation_type IN (
+        'AVAILABILITY_CHANGE','ACCESS_PROBLEM','RESOURCE_PROBLEM','EQUIPMENT_PROBLEM',
+        'SCHEDULE_DELAY','SAFETY_CONCERN','COMPLETION_UPDATE','GENERAL_UPDATE','UNKNOWN')),
+    concise_summary varchar(500) NOT NULL CHECK (length(btrim(concise_summary)) > 0),
+    reported_condition varchar(1000) NOT NULL CHECK (length(btrim(reported_condition)) > 0),
+    temporal_signal varchar(500),
+    location_signal varchar(500),
+    referenced_stage_id uuid REFERENCES stages(id),
+    referenced_work_id uuid REFERENCES work_items(id),
+    possible_blocker boolean NOT NULL,
+    blocker_reason varchar(1000),
+    confidence double precision NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+    requires_clarification boolean NOT NULL,
+    clarification_question varchar(500),
+    provider_name varchar(100) NOT NULL CHECK (length(btrim(provider_name)) > 0),
+    model_id varchar(300) NOT NULL CHECK (length(btrim(model_id)) > 0),
+    agent_name varchar(200) NOT NULL CHECK (length(btrim(agent_name)) > 0),
+    agent_version varchar(50) NOT NULL CHECK (length(btrim(agent_version)) > 0),
+    stop_reason varchar(100) NOT NULL CHECK (length(btrim(stop_reason)) > 0),
+    usage jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(usage)='object'),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    FOREIGN KEY(human_update_id,event_id) REFERENCES human_updates(id,event_id),
+    CHECK (possible_blocker = (blocker_reason IS NOT NULL)),
+    CHECK (requires_clarification = (clarification_question IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS human_update_interpretations_event_created_idx
+    ON human_update_interpretations(event_id,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS blockers (
+    id uuid PRIMARY KEY,
+    event_id uuid NOT NULL REFERENCES events(id),
+    source_human_update_id uuid NOT NULL,
+    reported_by_account_id uuid NOT NULL REFERENCES accounts(id),
+    created_by_account_id uuid NOT NULL REFERENCES accounts(id),
+    stage_id uuid REFERENCES stages(id),
+    work_id uuid REFERENCES work_items(id),
+    title varchar(200) NOT NULL CHECK (length(btrim(title)) > 0),
+    summary varchar(4000) NOT NULL CHECK (length(btrim(summary)) > 0),
+    category varchar(100),
+    handling_state varchar(20) NOT NULL DEFAULT 'ACKNOWLEDGED'
+        CHECK (handling_state IN ('ACKNOWLEDGED','WORKING','STALLED')),
+    condition_state varchar(20) NOT NULL DEFAULT 'OPEN'
+        CHECK (condition_state IN ('OPEN','CLEARED')),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    cleared_at timestamptz,
+    version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+    idempotency_key varchar(200),
+    FOREIGN KEY(source_human_update_id,event_id) REFERENCES human_updates(id,event_id),
+    UNIQUE(event_id,source_human_update_id),
+    UNIQUE(event_id,idempotency_key),
+    CHECK ((condition_state='OPEN' AND cleared_at IS NULL)
+        OR (condition_state='CLEARED' AND cleared_at IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS blockers_event_created_idx ON blockers(event_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS blockers_event_work_idx ON blockers(event_id,work_id,condition_state);
