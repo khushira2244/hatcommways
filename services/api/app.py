@@ -78,6 +78,8 @@ from services.planning_foundation.actor_dashboard_service import ActorDashboardS
 from services.planning_foundation.human_update_service import HumanUpdateService
 from services.planning_foundation.human_update_interpretation_service import HumanUpdateInterpretationService
 from services.planning_foundation.blocker_assessment_service import BlockerAssessmentService
+from services.planning_foundation.affected_work_models import AffectedWorkResolution
+from services.planning_foundation.affected_work_service import AffectedWorkService
 from services.planning_foundation.human_update_models import (
     AssessBlockerRequest,
     BlockerAssessmentSnapshot,
@@ -223,6 +225,7 @@ def create_app(
         execute_planning_requests or human_update_interpretation_runtime is not None
     )
     blocker_assessment_service = BlockerAssessmentService(database)
+    affected_work_service = AffectedWorkService(database)
     assessment_runtime = blocker_assessment_runtime or StrandsBlockerAssessmentAgent(
         blocker_assessment_service
     )
@@ -768,6 +771,28 @@ def create_app(
         return blocker_assessment_service.get_assessment(
             event_id, update_id, session.account.id
         )
+
+    @app.post(
+        '/events/{event_id}/blockers/{blocker_id}/resolve-affected-work',
+        response_model=AffectedWorkResolution,
+    )
+    def resolve_affected_work(
+        event_id: UUID,
+        blocker_id: UUID,
+        session: AuthenticatedSession = Depends(authenticated),
+    ):
+        return affected_work_service.resolve(event_id, blocker_id, session.account.id)
+
+    @app.get(
+        '/events/{event_id}/blockers/{blocker_id}/affected-work',
+        response_model=AffectedWorkResolution | None,
+    )
+    def get_affected_work_resolution(
+        event_id: UUID,
+        blocker_id: UUID,
+        session: AuthenticatedSession = Depends(authenticated),
+    ):
+        return affected_work_service.get_resolution(event_id, blocker_id, session.account.id)
 
     @app.post('/events/{event_id}/blockers', status_code=201, response_model=BlockerSnapshot)
     def create_blocker(event_id: UUID, body: BlockerCreate, session: AuthenticatedSession = Depends(authenticated)):

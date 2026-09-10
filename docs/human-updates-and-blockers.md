@@ -17,6 +17,8 @@ All endpoints require the existing bearer session. Actor and organizer identitie
 | POST | `/events/{event_id}/blockers` | Active organizer |
 | GET | `/events/{event_id}/blockers` | Active organizer |
 | PATCH | `/events/{event_id}/blockers/{blocker_id}` | Active organizer, matching `expected_version` |
+| POST | `/events/{event_id}/blockers/{blocker_id}/resolve-affected-work` | Active organizer; deterministic confirmed-graph resolution |
+| GET | `/events/{event_id}/blockers/{blocker_id}/affected-work` | Active organizer; persisted resolution or null |
 
 POST human updates accepts `text`, optional `stage_id`, `work_id`, `actor_requirement_id`, `participation_id`, and `idempotency_key`. Blank text and text over 10,000 characters are rejected. Whitespace, Unicode, and line endings are otherwise preserved exactly. A work link infers its stage; a role/participation link infers its ancestors. Conflicting or cross-event links are rejected. An actor's references must all match one of their accepted assignments. Event-level reports need at least one accepted assignment. A pending request, an unrelated membership, or a withdrawn/removed participation does not grant access. Partial approvals qualify through their accepted assignments only.
 
@@ -54,11 +56,21 @@ Human updates optionally deduplicate by `(event_id, reporter_account_id, idempot
 
 A unique `(event_id, source_human_update_id)` constraint prevents accidental duplicate blockers even without a key. An optional event-scoped blocker key is also unique. Matching replays preserve the blocker ID and its current lifecycle, including a cleared state. A changed payload, a different supplied key for an existing source, or a key reused for another source returns 409. Source-only retries can omit the key. A composite foreign key also enforces that blocker and source belong to the same event.
 
+## Deterministic affected work
+
+An open blocker created by a persisted blocking assessment can be resolved after assessment. The resolver reads only authoritative stages whose source `STAGE_PLAN` proposal is approved and authoritative work whose source `WORK_DECOMPOSITION` proposal is approved. Pending, rejected, stale, missing, and cross-event graph data never enters traversal. A row `(work_id, depends_on_work_id)` means the first work item depends on the second; downstream traversal therefore follows each prerequisite to its dependents. The directly assessed work is retained separately, reachable dependents are deduplicated, and output order is stable by stage order then work order. Independent and upstream branches stay outside the result.
+
+Stage-only assessments remain stage-level. They return the confirmed stage and no work IDs because the service does not infer that every work item in a stage is affected. Both work and stage dependency graphs are cycle-checked. Cycles, cross-event edges, unconfirmed direct references, missing direct scope, and graph changes after assessment fail safely. No LLM, Strands runtime, Nova call, coordination action, or replanning action participates in this calculation.
+
+Each assessment records the event and direct stage/work versions present when assessment completed. Resolution records those source versions and a SHA-256 fingerprint of confirmed stage/work IDs, versions, source proposals, and dependency edges. A first resolution requires the assessed event version still to be current. Matching retries return the same immutable row and emit no second outbox event. A different current fingerprint or version returns HTTP 409 rather than silently overwriting history. A cleared blocker cannot receive its first resolution; an already persisted resolution remains readable and replayable as historical evidence after clearance.
+
+Resolution inserts only `affected_work_resolutions` and one `blocker.affected_work_resolved` outbox record. It does not change the blocker condition, event/stage/work versions, schedules, dependency edges, meetings, actor requirements, accounts, or participations.
+
 ## Notifications and deferred work
 
 No notifications are emitted yet. `event_notifications` requires a non-null `participation_request_id`, restricts its type to PARTICIPATION_REQUEST, and its reader hydrates that request. `actor_updates` supports actor-facing announcements and meeting/decision messages, not organizer human-report notifications. Reusing either for these reports would require changing its contract. This foundation does not create a second notification system.
 
-Affected-work resolution, coordination, replanning, participant blocker visibility, frontend UI, notifications redesign, and EventBridge/SQS/AgentCore integration remain deferred. Assessment stores only direct impact metadata. It never calculates a downstream graph or writes schedules, dependencies, meetings, actor assignments, accounts, participation records, or plan versions.
+Coordination, replanning, participant blocker visibility, frontend UI, notifications redesign, and EventBridge/SQS/AgentCore integration remain deferred. Assessment stores direct impact metadata; the deterministic resolver expands confirmed work dependencies only when its explicit endpoint is called. Neither step writes schedules, dependencies, meetings, actor assignments, accounts, participation records, or plan versions.
 
 ## Verification
 
@@ -67,6 +79,8 @@ Affected-work resolution, coordination, replanning, participant blocker visibili
 `tests/planning_foundation/test_human_update_interpretation.py` covers explicit-only execution, scoped context, typed persistence, provenance, read-model exposure, duplicate reuse, concurrent-run exclusion, failure and explicit retry, invalid output/IDs, completion and clarification semantics, unchanged authoritative planning/participation state, and absence of automatic blockers. Its separately marked real-Bedrock case checks the three semantic scenarios without matching exact model prose.
 
 `tests/planning_foundation/test_blocker_assessment.py` covers explicit eligibility, tightly scoped context, typed persistence and provenance, semantic and ID validation, failure/retry, concurrent-run exclusion, assessment and blocker deduplication, immutable report/interpretation content, unchanged schedules/meetings/participations/assignments, deterministic initial blocker state, non-blocker and clarification behavior, and the separately marked three-case real-Nova proof.
+
+`tests/planning_foundation/test_affected_work_resolver.py` covers precise branch traversal, upstream and independent exclusion, stage-only scope, persisted replay, no-agent execution, stale versions and fingerprints, cycles, cross-event edges, cleared-blocker history, duplicate-edge deduplication, concurrency, one outbox event, and unchanged authoritative planning and blocker state.
 
 Use an isolated test database: the existing pytest fixture truncates test data. Never point the tests at the application database.
 

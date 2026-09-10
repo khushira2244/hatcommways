@@ -666,6 +666,9 @@ CREATE TABLE IF NOT EXISTS blocker_assessments (
     agent_version varchar(50) NOT NULL CHECK (length(btrim(agent_version)) > 0),
     stop_reason varchar(100) NOT NULL CHECK (length(btrim(stop_reason)) > 0),
     usage jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(usage)='object'),
+    assessed_event_version integer CHECK (assessed_event_version > 0),
+    assessed_stage_version integer CHECK (assessed_stage_version > 0),
+    assessed_work_version integer CHECK (assessed_work_version > 0),
     created_at timestamptz NOT NULL DEFAULT now(),
     FOREIGN KEY(interpretation_id,human_update_id,event_id)
         REFERENCES human_update_interpretations(id,human_update_id,event_id),
@@ -676,5 +679,41 @@ CREATE TABLE IF NOT EXISTS blocker_assessments (
     CHECK (NOT requires_clarification OR NOT is_execution_blocker),
     CHECK (is_execution_blocker = (authoritative_blocker_id IS NOT NULL))
 );
+ALTER TABLE blocker_assessments ADD COLUMN IF NOT EXISTS assessed_event_version integer;
+ALTER TABLE blocker_assessments ADD COLUMN IF NOT EXISTS assessed_stage_version integer;
+ALTER TABLE blocker_assessments ADD COLUMN IF NOT EXISTS assessed_work_version integer;
+ALTER TABLE blocker_assessments DROP CONSTRAINT IF EXISTS blocker_assessments_assessed_event_version_check;
+ALTER TABLE blocker_assessments DROP CONSTRAINT IF EXISTS blocker_assessments_assessed_stage_version_check;
+ALTER TABLE blocker_assessments DROP CONSTRAINT IF EXISTS blocker_assessments_assessed_work_version_check;
+ALTER TABLE blocker_assessments ADD CONSTRAINT blocker_assessments_assessed_event_version_check
+    CHECK (assessed_event_version > 0);
+ALTER TABLE blocker_assessments ADD CONSTRAINT blocker_assessments_assessed_stage_version_check
+    CHECK (assessed_stage_version > 0);
+ALTER TABLE blocker_assessments ADD CONSTRAINT blocker_assessments_assessed_work_version_check
+    CHECK (assessed_work_version > 0);
 CREATE INDEX IF NOT EXISTS blocker_assessments_event_created_idx
     ON blocker_assessments(event_id,created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS blockers_identity_scope_idx ON blockers(id,event_id);
+CREATE UNIQUE INDEX IF NOT EXISTS blocker_assessments_identity_scope_idx
+    ON blocker_assessments(id,event_id,authoritative_blocker_id);
+
+CREATE TABLE IF NOT EXISTS affected_work_resolutions (
+    id uuid PRIMARY KEY,
+    event_id uuid NOT NULL,
+    blocker_id uuid NOT NULL UNIQUE,
+    blocker_assessment_id uuid NOT NULL UNIQUE,
+    directly_affected_work_ids uuid[] NOT NULL DEFAULT ARRAY[]::uuid[],
+    downstream_affected_work_ids uuid[] NOT NULL DEFAULT ARRAY[]::uuid[],
+    affected_stage_ids uuid[] NOT NULL DEFAULT ARRAY[]::uuid[],
+    deterministic_reason varchar(500) NOT NULL CHECK (length(btrim(deterministic_reason)) > 0),
+    graph_fingerprint char(64) NOT NULL CHECK (graph_fingerprint ~ '^[0-9a-f]{64}$'),
+    assessed_event_version integer NOT NULL CHECK (assessed_event_version > 0),
+    resolved_event_version integer NOT NULL CHECK (resolved_event_version > 0),
+    source_versions jsonb NOT NULL CHECK (jsonb_typeof(source_versions)='object'),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    FOREIGN KEY(blocker_id,event_id) REFERENCES blockers(id,event_id) ON DELETE CASCADE,
+    FOREIGN KEY(blocker_assessment_id,event_id,blocker_id)
+        REFERENCES blocker_assessments(id,event_id,authoritative_blocker_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS affected_work_resolutions_event_created_idx
+    ON affected_work_resolutions(event_id,created_at DESC);

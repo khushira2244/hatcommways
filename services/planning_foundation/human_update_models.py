@@ -171,6 +171,9 @@ class BlockerAssessmentSnapshot(BlockerAssessment):
     stop_reason: str
     usage: dict[str, int] = Field(default_factory=dict)
     created_at: datetime
+    assessed_event_version: int | None = None
+    assessed_stage_version: int | None = None
+    assessed_work_version: int | None = None
 
 
 class BlockerAssessmentInterpretation(HumanUpdateInterpretation):

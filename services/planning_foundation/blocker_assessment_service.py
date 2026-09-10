@@ -265,6 +265,22 @@ class BlockerAssessmentService:
                 )
                 blocker_id = blocker.id
 
+            assessed_stage_id = assessment.directly_referenced_stage_id
+            if assessed_stage_id is None and assessment.directly_referenced_work_id is not None:
+                assessed_stage_id = context.work["stage_id"]
+            assessed_stage_version = None
+            if assessed_stage_id is not None:
+                assessed_stage_version = connection.execute(
+                    "SELECT version FROM stages WHERE id=%s AND event_id=%s",
+                    (assessed_stage_id, event_id),
+                ).fetchone()["version"]
+            assessed_work_version = None
+            if assessment.directly_referenced_work_id is not None:
+                assessed_work_version = connection.execute(
+                    "SELECT version FROM work_items WHERE id=%s AND event_id=%s",
+                    (assessment.directly_referenced_work_id, event_id),
+                ).fetchone()["version"]
+
             values = assessment.model_dump(mode="python")
             row = connection.execute(
                 """INSERT INTO blocker_assessments(
@@ -273,7 +289,8 @@ class BlockerAssessmentService:
                        directly_referenced_work_id,severity_internal,urgency_internal,
                        coordination_needed,replanning_may_be_needed,requires_clarification,
                        clarification_question,confidence,authoritative_blocker_id,
-                       provider_name,model_id,agent_name,agent_version,stop_reason,usage)
+                       provider_name,model_id,agent_name,agent_version,stop_reason,usage,
+                       assessed_event_version,assessed_stage_version,assessed_work_version)
                    VALUES(%(id)s,%(event_id)s,%(human_update_id)s,%(interpretation_id)s,
                        %(is_execution_blocker)s,%(blocker_kind)s,%(concise_reason)s,
                        %(directly_referenced_stage_id)s,%(directly_referenced_work_id)s,
@@ -281,7 +298,8 @@ class BlockerAssessmentService:
                        %(replanning_may_be_needed)s,%(requires_clarification)s,
                        %(clarification_question)s,%(confidence)s,%(authoritative_blocker_id)s,
                        %(provider_name)s,%(model_id)s,%(agent_name)s,%(agent_version)s,
-                       %(stop_reason)s,%(usage)s)
+                       %(stop_reason)s,%(usage)s,%(assessed_event_version)s,
+                       %(assessed_stage_version)s,%(assessed_work_version)s)
                    RETURNING *""",
                 {
                     "id": uuid4(),
@@ -296,6 +314,9 @@ class BlockerAssessmentService:
                     "agent_version": agent_version,
                     "stop_reason": stop_reason,
                     "usage": Jsonb(usage),
+                    "assessed_event_version": event["version"],
+                    "assessed_stage_version": assessed_stage_version,
+                    "assessed_work_version": assessed_work_version,
                 },
             ).fetchone()
             connection.execute(

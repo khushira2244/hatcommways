@@ -113,3 +113,99 @@ So tomorrow's goal is not merely “build Blocker Agent.”
 It is:
 
 > **Build the complete real-world execution loop from actor schedule → meeting → update → blocker → coordination → selective replanning → human approval.**
+
+
+Yes bro, that sequence makes sense, with one small adjustment: **finish the remaining blocker chain first before the big whole-system check**, otherwise you’ll test an incomplete execution loop.
+
+I’d do it like this:
+
+```text
+Today
+
+1. Deterministic affected-work resolver
+2. Coordination Agent
+3. Replanning Agent + organizer approval
+
+Then:
+
+4. Real Map backend/read-model foundation
+   - real event location
+   - accepted actors
+   - accepted resources/support markers later
+   - privacy-safe fields
+   - no Google Maps frontend complexity yet
+
+5. Add/demo backend data needed for map
+   - realistic event
+   - actors
+   - roles
+   - accepted participation
+   - resource/support data as available
+
+6. Whole-system manual verification
+   Create Event
+   → Governance
+   → Stage Plan
+   → Work Design
+   → Actor Requirements
+   → Event Setup
+   → Event Home
+   → Join as Actor
+   → Organizer approval
+   → Actor Dashboard
+   → Human Update
+   → Interpretation
+   → Blocker
+   → affected work
+   → Coordination
+   → Replanning
+   → approval
+
+7. Only after backend/state flow is proven:
+   build Blocker / Coordination / Replanning frontend pages/panels
+```
+
+For the **map**, yes: first create the **backend/read model and real data contract**, then wire Google Maps. Don’t start with frontend pins and then invent backend data later.
+
+The map backend should answer something like:
+
+```text
+GET /events/{event_id}/map
+```
+
+with only safe, real data:
+
+```text
+event location
+accepted actor markers
+role/category metadata
+resource/support markers when they exist
+privacy visibility
+map dimension settings
+```
+
+Then the frontend Google Map becomes mostly rendering/filtering.
+
+And yes, **tomorrow should be the AWS/runtime day**:
+
+```text
+Domain router
+→ agent-run registry
+→ worker
+→ EventBridge
+→ SQS
+→ DLQ
+→ retries
+→ idempotency
+→ correlation/causation
+→ AgentCore Observability
+→ real blocker/replanning trace
+→ failure/retry proof
+```
+
+So the boundary is clean:
+
+**Today = business behavior + map/read-model + manual product verification.**
+**Tomorrow = AWS execution infrastructure underneath the already-working flow.**
+
+That is safer than mixing AWS into unfinished blocker semantics.
