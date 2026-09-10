@@ -45,6 +45,11 @@ from services.agent_runtime.blocker_assessment import (
     BlockerAssessmentWorkflow,
     StrandsBlockerAssessmentAgent,
 )
+from services.agent_runtime.coordination import (
+    CoordinationRuntime,
+    CoordinationWorkflow,
+    StrandsCoordinationAgent,
+)
 from services.agent_runtime.participation_advisory import DeterministicParticipationAdvisory, StrandsParticipationAdvisoryAgent
 from services.planning_foundation.governance_service import GovernanceService
 from services.planning_foundation.governance_evidence_storage import LocalGovernanceEvidenceStorage, MAX_EVIDENCE_BYTES
@@ -80,6 +85,11 @@ from services.planning_foundation.human_update_interpretation_service import Hum
 from services.planning_foundation.blocker_assessment_service import BlockerAssessmentService
 from services.planning_foundation.affected_work_models import AffectedWorkResolution
 from services.planning_foundation.affected_work_service import AffectedWorkService
+from services.planning_foundation.coordination_models import (
+    CoordinateBlockerRequest,
+    CoordinationProposalSnapshot,
+)
+from services.planning_foundation.coordination_service import CoordinationService
 from services.planning_foundation.human_update_models import (
     AssessBlockerRequest,
     BlockerAssessmentSnapshot,
@@ -189,6 +199,7 @@ def create_app(
     governance_upload_root: Path | None = None,
     human_update_interpretation_runtime: HumanUpdateInterpretationRuntime | None = None,
     blocker_assessment_runtime: BlockerAssessmentRuntime | None = None,
+    coordination_runtime: CoordinationRuntime | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Hatcommways API", version="0.1.0")
     app.add_middleware(
@@ -235,6 +246,10 @@ def create_app(
     blocker_assessment_execution_enabled = (
         execute_planning_requests or blocker_assessment_runtime is not None
     )
+    coordination_service = CoordinationService(database)
+    coordination_agent_runtime = coordination_runtime or StrandsCoordinationAgent(coordination_service)
+    coordination_workflow = CoordinationWorkflow(coordination_service, coordination_agent_runtime)
+    coordination_execution_enabled = execute_planning_requests or coordination_runtime is not None
     participation_advisor = StrandsParticipationAdvisoryAgent() if execute_planning_requests else DeterministicParticipationAdvisory()
     setup_service = EventSetupService(database)
     governance_service = GovernanceService(database)
@@ -793,6 +808,36 @@ def create_app(
         session: AuthenticatedSession = Depends(authenticated),
     ):
         return affected_work_service.get_resolution(event_id, blocker_id, session.account.id)
+
+    @app.post(
+        '/events/{event_id}/blockers/{blocker_id}/coordinate',
+        response_model=CoordinationProposalSnapshot,
+    )
+    def coordinate_blocker(
+        event_id: UUID,
+        blocker_id: UUID,
+        body: CoordinateBlockerRequest = CoordinateBlockerRequest(),
+        session: AuthenticatedSession = Depends(authenticated),
+    ):
+        if not coordination_execution_enabled:
+            raise ValidationError('coordination agent execution is disabled')
+        return coordination_workflow.execute(
+            event_id=event_id,
+            blocker_id=blocker_id,
+            organizer_id=session.account.id,
+            retry=body.retry,
+        )
+
+    @app.get(
+        '/events/{event_id}/blockers/{blocker_id}/coordination',
+        response_model=CoordinationProposalSnapshot | None,
+    )
+    def get_blocker_coordination(
+        event_id: UUID,
+        blocker_id: UUID,
+        session: AuthenticatedSession = Depends(authenticated),
+    ):
+        return coordination_service.get_proposal(event_id, blocker_id, session.account.id)
 
     @app.post('/events/{event_id}/blockers', status_code=201, response_model=BlockerSnapshot)
     def create_blocker(event_id: UUID, body: BlockerCreate, session: AuthenticatedSession = Depends(authenticated)):

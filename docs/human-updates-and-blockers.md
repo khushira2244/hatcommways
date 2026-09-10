@@ -19,6 +19,8 @@ All endpoints require the existing bearer session. Actor and organizer identitie
 | PATCH | `/events/{event_id}/blockers/{blocker_id}` | Active organizer, matching `expected_version` |
 | POST | `/events/{event_id}/blockers/{blocker_id}/resolve-affected-work` | Active organizer; deterministic confirmed-graph resolution |
 | GET | `/events/{event_id}/blockers/{blocker_id}/affected-work` | Active organizer; persisted resolution or null |
+| POST | `/events/{event_id}/blockers/{blocker_id}/coordinate` | Active organizer; explicit bounded Strands/Nova execution |
+| GET | `/events/{event_id}/blockers/{blocker_id}/coordination` | Active organizer; persisted proposal or null |
 
 POST human updates accepts `text`, optional `stage_id`, `work_id`, `actor_requirement_id`, `participation_id`, and `idempotency_key`. Blank text and text over 10,000 characters are rejected. Whitespace, Unicode, and line endings are otherwise preserved exactly. A work link infers its stage; a role/participation link infers its ancestors. Conflicting or cross-event links are rejected. An actor's references must all match one of their accepted assignments. Event-level reports need at least one accepted assignment. A pending request, an unrelated membership, or a withdrawn/removed participation does not grant access. Partial approvals qualify through their accepted assignments only.
 
@@ -66,11 +68,21 @@ Each assessment records the event and direct stage/work versions present when as
 
 Resolution inserts only `affected_work_resolutions` and one `blocker.affected_work_resolved` outbox record. It does not change the blocker condition, event/stage/work versions, schedules, dependency edges, meetings, actor requirements, accounts, or participations.
 
+## Coordination proposals
+
+Coordination is an explicit reasoning step after a persisted affected-work resolution. The Coordination Agent asks whether bounded operational actions can preserve the confirmed plan. Its scoped tool exposes only the authoritative blocker and assessment, affected stages/work, accepted actors assigned within that scope and their approved availability, relevant non-cancelled meetings, and existing event setup resources. It does not receive unrelated work, actors, meetings, pending proposals, email addresses, or a database-wide read tool.
+
+The typed proposal records `coordination_possible`, `requires_replanning`, rationale, confidence, runtime provenance, source versions, and up to twelve bounded actions. Supported actions are `NOTIFY_ACTOR`, `REQUEST_CLARIFICATION`, `USE_EXISTING_RESOURCE`, `MOVE_EXISTING_RESOURCE`, `RESCHEDULE_MEETING`, `REASSIGNMENT_SUGGESTION`, `TEMPORARY_WORKAROUND`, `WAIT_FOR_CONDITION`, and `OTHER`. Every referenced actor, work item, meeting, and resource must exist in the supplied context. Resource actions require an existing resource, meeting rescheduling requires a relevant meeting, and reassignment suggestions always require human approval.
+
+Actions are advisory records only. `NOTIFY_ACTOR` sends no notification, `RESCHEDULE_MEETING` changes no meeting, and `REASSIGNMENT_SUGGESTION` changes no assignment. Coordination never changes stage/work schedules, dependencies, work definitions, participations, blocker lifecycle, or plan versions. A `requires_replanning=true` result records only that conclusion; no replan is created.
+
+`coordination_requests` provides `RUNNING`, `SUCCEEDED`, and `FAILED` lifecycle state. Runtime or validation failure persists only a bounded failure code and requires `retry: true`. The source fingerprint covers the event, blocker, confirmed affected graph, affected stage/work versions, relevant participation windows, meeting versions, and event setup version. Same-state retries reuse the proposal without another model call. Changed relevant state returns HTTP 409. Event locking ensures concurrent calls produce one effective model execution.
+
 ## Notifications and deferred work
 
 No notifications are emitted yet. `event_notifications` requires a non-null `participation_request_id`, restricts its type to PARTICIPATION_REQUEST, and its reader hydrates that request. `actor_updates` supports actor-facing announcements and meeting/decision messages, not organizer human-report notifications. Reusing either for these reports would require changing its contract. This foundation does not create a second notification system.
 
-Coordination, replanning, participant blocker visibility, frontend UI, notifications redesign, and EventBridge/SQS/AgentCore integration remain deferred. Assessment stores direct impact metadata; the deterministic resolver expands confirmed work dependencies only when its explicit endpoint is called. Neither step writes schedules, dependencies, meetings, actor assignments, accounts, participation records, or plan versions.
+Replanning, organizer replan approval, participant blocker visibility, frontend UI, notifications redesign, and EventBridge/SQS/AgentCore integration remain deferred. Assessment stores direct impact metadata; the deterministic resolver expands confirmed work dependencies; coordination stores bounded proposals. None writes schedules, dependencies, meetings, actor assignments, accounts, participation records, or plan versions.
 
 ## Verification
 
@@ -81,6 +93,8 @@ Coordination, replanning, participant blocker visibility, frontend UI, notificat
 `tests/planning_foundation/test_blocker_assessment.py` covers explicit eligibility, tightly scoped context, typed persistence and provenance, semantic and ID validation, failure/retry, concurrent-run exclusion, assessment and blocker deduplication, immutable report/interpretation content, unchanged schedules/meetings/participations/assignments, deterministic initial blocker state, non-blocker and clarification behavior, and the separately marked three-case real-Nova proof.
 
 `tests/planning_foundation/test_affected_work_resolver.py` covers precise branch traversal, upstream and independent exclusion, stage-only scope, persisted replay, no-agent execution, stale versions and fingerprints, cycles, cross-event edges, cleared-blocker history, duplicate-edge deduplication, concurrency, one outbox event, and unchanged authoritative planning and blocker state.
+
+`tests/planning_foundation/test_coordination_agent.py` covers explicit-only execution, scoped context, non-replan and replan-needed outcomes, typed persistence, invalid-ID rejection, failed lifecycle and explicit retry, source staleness, concurrent single execution, no notifications, and unchanged schedules, dependencies, assignments, participations, meetings, and blocker state. Its marked real-Bedrock case exercises the same contract through Strands and Nova.
 
 Use an isolated test database: the existing pytest fixture truncates test data. Never point the tests at the application database.
 
