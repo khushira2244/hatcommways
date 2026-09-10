@@ -1,6 +1,6 @@
 # Human updates and blockers
 
-This backend foundation stores real reports, bounded AI-derived interpretations, and organizer-managed blocker state. Interpretation runs only through an explicit action; it does not mark work blocked, change a schedule, or assign people.
+This backend foundation separates human-reported truth, AI-derived meaning, AI-derived execution-impact judgment, and authoritative organizer-visible blocker state. Both AI steps run only through explicit actions; neither changes schedules, work, dependencies, or assignments.
 
 ## API
 
@@ -12,6 +12,8 @@ All endpoints require the existing bearer session. Actor and organizer identitie
 | GET | `/events/{event_id}/human-updates` | Active organizer; includes the interpretation when available |
 | POST | `/events/{event_id}/human-updates/{update_id}/interpret` | Active organizer; explicit AI execution |
 | GET | `/events/{event_id}/human-updates/{update_id}/interpretation` | Active organizer |
+| POST | `/events/{event_id}/human-updates/{update_id}/assess-blocker` | Active organizer; requires persisted successful interpretation |
+| GET | `/events/{event_id}/human-updates/{update_id}/blocker-assessment` | Active organizer |
 | POST | `/events/{event_id}/blockers` | Active organizer |
 | GET | `/events/{event_id}/blockers` | Active organizer |
 | PATCH | `/events/{event_id}/blockers/{blocker_id}` | Active organizer, matching `expected_version` |
@@ -34,6 +36,14 @@ The Human Update Interpretation Agent uses the existing Strands `Agent` and Amaz
 
 Interpretation request and completion/failure emit `human_update.interpretation_requested`, `human_update.interpreted`, and `human_update.interpretation_failed` audit records through the existing domain outbox. These records contain IDs, bounded failure codes, and successful runtime provenance; they do not copy the report text. Existing interpretations are returned without another model call. A transactionally locked `RUNNING` state prevents concurrent calls from invoking the model twice.
 
+`blocker_assessments` stores one active assessment per persisted interpretation. The bounded blocker kinds are `AVAILABILITY`, `ACCESS`, `RESOURCE`, `EQUIPMENT`, `SCHEDULE`, `SAFETY`, `DEPENDENCY`, `OTHER`, and `NONE`; severity and urgency use internal `LOW`, `MEDIUM`, or `HIGH` metadata. The result also records a concise reason, direct scoped references, coordination/replanning signals, clarification state, confidence, provider/model/agent provenance, stop reason, usage, and the authoritative blocker ID when one was created or reused. Assessment lifecycle metadata on the interpretation is `NOT_REQUESTED → RUNNING → ASSESSED`; runtime or validation errors produce `FAILED`, retain only a bounded exception-class code, and require an explicit `retry: true`.
+
+The Blocker Assessment Agent uses the same synchronous Strands/Nova pattern and model as interpretation. Its single bound tool receives only the exact report, persisted interpretation, reporter relationship/name, directly linked stage/work schedules, one matching accepted participation, and meetings explicitly linked to that work or stage. It receives no event dependency graph or unrelated stages, work, meetings, participants, or blockers. Pydantic and service validation enforce IDs, direct scope, confidence, enum and semantic consistency. A non-blocker must use `NONE` with coordination and replanning false. An unresolved interpretation must remain clarification-only. Invalid output is not persisted.
+
+Assessment is never triggered by report submission or interpretation completion. Existing results are reused without a model call, and a transactionally locked `RUNNING` state prevents concurrent execution. Request, success, and failure emit `blocker_assessment.requested`, `blocker_assessment.assessed`, and `blocker_assessment.failed` audit records without copying report text.
+
+The model cannot write blocker rows or choose blocker lifecycle. After a valid `is_execution_blocker=true` result with no clarification, the assessment service calls the existing deterministic blocker boundary in the same transaction. That boundary creates or reuses one blocker for the source update, derives title/summary/category and direct references from the validated assessment, and always leaves a newly created blocker at `ACKNOWLEDGED + OPEN`. Non-blocker and clarification results create no blocker.
+
 `blockers` starts at `ACKNOWLEDGED + OPEN`, version 1. Handling states ACKNOWLEDGED, WORKING, and STALLED are independent of condition states OPEN and CLEARED. Changing handling never clears the condition. Clearing sets `cleared_at`; handling changes retain it; reopening clears it. Lifecycle changes increment version and updated_at. An unchanged state returns the current snapshot without a version bump. Even no-op requests require the current version. Stale versions return HTTP 409. Clearing never deletes a blocker.
 
 Every mutation checks permissions within its transaction. Writes serialize on the event row without changing it; blocker updates also lock the blocker. The service can be used by a future validated internal adapter with an authorized organizer principal; no unchecked agent path exists today.
@@ -48,13 +58,15 @@ A unique `(event_id, source_human_update_id)` constraint prevents accidental dup
 
 No notifications are emitted yet. `event_notifications` requires a non-null `participation_request_id`, restricts its type to PARTICIPATION_REQUEST, and its reader hydrates that request. `actor_updates` supports actor-facing announcements and meeting/decision messages, not organizer human-report notifications. Reusing either for these reports would require changing its contract. This foundation does not create a second notification system.
 
-Blocker assessment, affected-work resolution, coordination, replanning, participant blocker visibility, frontend UI, notifications redesign, and EventBridge/SQS/AgentCore integration remain deferred. Interpretation does not create blockers and never writes schedules, actor assignments, accounts, participation records, or plan versions.
+Affected-work resolution, coordination, replanning, participant blocker visibility, frontend UI, notifications redesign, and EventBridge/SQS/AgentCore integration remain deferred. Assessment stores only direct impact metadata. It never calculates a downstream graph or writes schedules, dependencies, meetings, actor assignments, accounts, participation records, or plan versions.
 
 ## Verification
 
 `tests/planning_foundation/test_human_updates_blockers.py` uses real PostgreSQL and the existing authenticated participation approval flow. It covers Gachibowli Lake Cleanup, Priya's exact late-arrival report, Shoreline Cleanup, independent states, reopen/clear timestamps, concurrent deduplication and stale updates, immutable text, scope and authorization failures, and unchanged schedules/accounts/assignments/agent-request records.
 
 `tests/planning_foundation/test_human_update_interpretation.py` covers explicit-only execution, scoped context, typed persistence, provenance, read-model exposure, duplicate reuse, concurrent-run exclusion, failure and explicit retry, invalid output/IDs, completion and clarification semantics, unchanged authoritative planning/participation state, and absence of automatic blockers. Its separately marked real-Bedrock case checks the three semantic scenarios without matching exact model prose.
+
+`tests/planning_foundation/test_blocker_assessment.py` covers explicit eligibility, tightly scoped context, typed persistence and provenance, semantic and ID validation, failure/retry, concurrent-run exclusion, assessment and blocker deduplication, immutable report/interpretation content, unchanged schedules/meetings/participations/assignments, deterministic initial blocker state, non-blocker and clarification behavior, and the separately marked three-case real-Nova proof.
 
 Use an isolated test database: the existing pytest fixture truncates test data. Never point the tests at the application database.
 

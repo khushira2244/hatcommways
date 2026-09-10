@@ -155,39 +155,78 @@ class HumanUpdateService:
 
     def create_blocker(self, event_id: UUID, account_id: UUID, body: BlockerCreate) -> BlockerSnapshot:
         with self.database.connect() as c:
-            event = self._event(c, event_id, account_id, write=True)
-            self._require_organizer(c, event, account_id)
-            source = c.execute('SELECT * FROM human_updates WHERE id=%s AND event_id=%s', (body.human_update_id, event_id)).fetchone()
-            if source is None:
-                raise ValidationError('source human update must belong to this event')
-            stage_id, work_id = body.stage_id, body.work_id
-            if stage_id is None and work_id is None:
-                stage_id, work_id = source['stage_id'], source['work_id']
-            scope = self._scope(c, event_id, stage_id=stage_id, work_id=work_id)
-            values = dict(event_id=event_id, source_human_update_id=body.human_update_id,
-                          stage_id=scope['stage_id'], work_id=scope['work_id'], title=body.title,
-                          summary=body.summary, category=body.category)
-            existing = c.execute(
-                """SELECT * FROM blockers WHERE event_id=%s AND
-                   (source_human_update_id=%s OR (idempotency_key IS NOT NULL AND idempotency_key=%s))""",
-                (event_id, body.human_update_id, body.idempotency_key),
-            ).fetchall()
-            if existing:
-                if (len(existing) != 1
-                    or any(existing[0][key] != value for key, value in values.items())
-                    or (body.idempotency_key is not None and existing[0]['idempotency_key'] != body.idempotency_key)):
-                    raise IdempotencyConflictError('source update or idempotency key already has a different blocker')
-                # Replays preserve the current lifecycle, including cleared blockers.
-                return self._blocker_rows(c, event_id, existing[0]['id'])[0]
-            row = c.execute(
-                """INSERT INTO blockers(id,event_id,source_human_update_id,reported_by_account_id,
-                       created_by_account_id,stage_id,work_id,title,summary,category,idempotency_key)
-                   VALUES(%(id)s,%(event_id)s,%(source_human_update_id)s,%(reported_by_account_id)s,
-                       %(created_by_account_id)s,%(stage_id)s,%(work_id)s,%(title)s,%(summary)s,%(category)s,%(idempotency_key)s)
-                   RETURNING id""", dict(id=uuid4(), reported_by_account_id=source['reporter_account_id'],
-                       created_by_account_id=account_id, idempotency_key=body.idempotency_key, **values),
-            ).fetchone()
-            return self._blocker_rows(c, event_id, row['id'])[0]
+            return self._create_blocker(
+                c, event_id, account_id, body, reuse_existing_source=False
+            )
+
+    def _create_blocker(
+        self,
+        connection,
+        event_id: UUID,
+        account_id: UUID,
+        body: BlockerCreate,
+        *,
+        reuse_existing_source: bool,
+    ) -> BlockerSnapshot:
+        """Deterministic blocker boundary, reusable inside a caller's transaction."""
+        event = self._event(connection, event_id, account_id, write=True)
+        self._require_organizer(connection, event, account_id)
+        source = connection.execute(
+            'SELECT * FROM human_updates WHERE id=%s AND event_id=%s',
+            (body.human_update_id, event_id),
+        ).fetchone()
+        if source is None:
+            raise ValidationError('source human update must belong to this event')
+        stage_id, work_id = body.stage_id, body.work_id
+        if stage_id is None and work_id is None:
+            stage_id, work_id = source['stage_id'], source['work_id']
+        scope = self._scope(connection, event_id, stage_id=stage_id, work_id=work_id)
+        values = dict(
+            event_id=event_id,
+            source_human_update_id=body.human_update_id,
+            stage_id=scope['stage_id'],
+            work_id=scope['work_id'],
+            title=body.title,
+            summary=body.summary,
+            category=body.category,
+        )
+        existing = connection.execute(
+            """SELECT * FROM blockers WHERE event_id=%s AND
+               (source_human_update_id=%s OR (idempotency_key IS NOT NULL AND idempotency_key=%s))""",
+            (event_id, body.human_update_id, body.idempotency_key),
+        ).fetchall()
+        if existing:
+            if reuse_existing_source and len(existing) == 1 and (
+                existing[0]['source_human_update_id'] == body.human_update_id
+            ):
+                return self._blocker_rows(connection, event_id, existing[0]['id'])[0]
+            if (
+                len(existing) != 1
+                or any(existing[0][key] != value for key, value in values.items())
+                or (
+                    body.idempotency_key is not None
+                    and existing[0]['idempotency_key'] != body.idempotency_key
+                )
+            ):
+                raise IdempotencyConflictError(
+                    'source update or idempotency key already has a different blocker'
+                )
+            return self._blocker_rows(connection, event_id, existing[0]['id'])[0]
+        row = connection.execute(
+            """INSERT INTO blockers(id,event_id,source_human_update_id,reported_by_account_id,
+                   created_by_account_id,stage_id,work_id,title,summary,category,idempotency_key)
+               VALUES(%(id)s,%(event_id)s,%(source_human_update_id)s,%(reported_by_account_id)s,
+                   %(created_by_account_id)s,%(stage_id)s,%(work_id)s,%(title)s,%(summary)s,%(category)s,%(idempotency_key)s)
+               RETURNING id""",
+            dict(
+                id=uuid4(),
+                reported_by_account_id=source['reporter_account_id'],
+                created_by_account_id=account_id,
+                idempotency_key=body.idempotency_key,
+                **values,
+            ),
+        ).fetchone()
+        return self._blocker_rows(connection, event_id, row['id'])[0]
 
     def list_blockers(self, event_id: UUID, account_id: UUID) -> list[BlockerSnapshot]:
         with self.database.connect() as c:

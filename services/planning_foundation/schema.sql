@@ -566,13 +566,50 @@ CREATE TABLE IF NOT EXISTS human_update_interpretations (
     agent_version varchar(50) NOT NULL CHECK (length(btrim(agent_version)) > 0),
     stop_reason varchar(100) NOT NULL CHECK (length(btrim(stop_reason)) > 0),
     usage jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(usage)='object'),
+    blocker_assessment_status varchar(20) NOT NULL DEFAULT 'NOT_REQUESTED',
+    blocker_assessment_failed_at timestamptz,
+    blocker_assessment_failure_code varchar(100),
+    blocker_assessment_attempt_count integer NOT NULL DEFAULT 0,
     created_at timestamptz NOT NULL DEFAULT now(),
     FOREIGN KEY(human_update_id,event_id) REFERENCES human_updates(id,event_id),
     CHECK (possible_blocker = (blocker_reason IS NOT NULL)),
     CHECK (requires_clarification = (clarification_question IS NOT NULL))
 );
+ALTER TABLE human_update_interpretations
+    ADD COLUMN IF NOT EXISTS blocker_assessment_status varchar(20) NOT NULL DEFAULT 'NOT_REQUESTED';
+ALTER TABLE human_update_interpretations
+    ADD COLUMN IF NOT EXISTS blocker_assessment_failed_at timestamptz;
+ALTER TABLE human_update_interpretations
+    ADD COLUMN IF NOT EXISTS blocker_assessment_failure_code varchar(100);
+ALTER TABLE human_update_interpretations
+    ADD COLUMN IF NOT EXISTS blocker_assessment_attempt_count integer NOT NULL DEFAULT 0;
+ALTER TABLE human_update_interpretations
+    DROP CONSTRAINT IF EXISTS human_update_interpretations_blocker_assessment_status_check;
+ALTER TABLE human_update_interpretations
+    DROP CONSTRAINT IF EXISTS human_update_interpretations_blocker_assessment_lifecycle_check;
+ALTER TABLE human_update_interpretations
+    DROP CONSTRAINT IF EXISTS human_update_interpretations_blocker_assessment_attempt_count_check;
+ALTER TABLE human_update_interpretations
+    ADD CONSTRAINT human_update_interpretations_blocker_assessment_status_check
+    CHECK (blocker_assessment_status IN ('NOT_REQUESTED','RUNNING','ASSESSED','FAILED'));
+ALTER TABLE human_update_interpretations
+    ADD CONSTRAINT human_update_interpretations_blocker_assessment_attempt_count_check
+    CHECK (blocker_assessment_attempt_count >= 0);
+ALTER TABLE human_update_interpretations
+    ADD CONSTRAINT human_update_interpretations_blocker_assessment_lifecycle_check CHECK (
+       (blocker_assessment_status='NOT_REQUESTED' AND blocker_assessment_failed_at IS NULL
+          AND blocker_assessment_failure_code IS NULL AND blocker_assessment_attempt_count=0)
+    OR (blocker_assessment_status='RUNNING' AND blocker_assessment_failed_at IS NULL
+          AND blocker_assessment_failure_code IS NULL AND blocker_assessment_attempt_count>0)
+    OR (blocker_assessment_status='ASSESSED' AND blocker_assessment_failed_at IS NULL
+          AND blocker_assessment_failure_code IS NULL AND blocker_assessment_attempt_count>0)
+    OR (blocker_assessment_status='FAILED' AND blocker_assessment_failed_at IS NOT NULL
+          AND blocker_assessment_failure_code IS NOT NULL AND blocker_assessment_attempt_count>0)
+);
 CREATE INDEX IF NOT EXISTS human_update_interpretations_event_created_idx
     ON human_update_interpretations(event_id,created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS human_update_interpretations_identity_scope_idx
+    ON human_update_interpretations(id,human_update_id,event_id);
 
 CREATE TABLE IF NOT EXISTS blockers (
     id uuid PRIMARY KEY,
@@ -602,3 +639,42 @@ CREATE TABLE IF NOT EXISTS blockers (
 );
 CREATE INDEX IF NOT EXISTS blockers_event_created_idx ON blockers(event_id,created_at DESC);
 CREATE INDEX IF NOT EXISTS blockers_event_work_idx ON blockers(event_id,work_id,condition_state);
+
+CREATE TABLE IF NOT EXISTS blocker_assessments (
+    id uuid PRIMARY KEY,
+    event_id uuid NOT NULL,
+    human_update_id uuid NOT NULL,
+    interpretation_id uuid NOT NULL UNIQUE,
+    is_execution_blocker boolean NOT NULL,
+    blocker_kind varchar(30) NOT NULL CHECK (blocker_kind IN (
+        'AVAILABILITY','ACCESS','RESOURCE','EQUIPMENT','SCHEDULE','SAFETY',
+        'DEPENDENCY','OTHER','NONE')),
+    concise_reason varchar(1000) NOT NULL CHECK (length(btrim(concise_reason)) > 0),
+    directly_referenced_stage_id uuid REFERENCES stages(id),
+    directly_referenced_work_id uuid REFERENCES work_items(id),
+    severity_internal varchar(10) NOT NULL CHECK (severity_internal IN ('LOW','MEDIUM','HIGH')),
+    urgency_internal varchar(10) NOT NULL CHECK (urgency_internal IN ('LOW','MEDIUM','HIGH')),
+    coordination_needed boolean NOT NULL,
+    replanning_may_be_needed boolean NOT NULL,
+    requires_clarification boolean NOT NULL,
+    clarification_question varchar(500),
+    confidence numeric(4,3) NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+    authoritative_blocker_id uuid REFERENCES blockers(id),
+    provider_name varchar(100) NOT NULL CHECK (length(btrim(provider_name)) > 0),
+    model_id varchar(300) NOT NULL CHECK (length(btrim(model_id)) > 0),
+    agent_name varchar(200) NOT NULL CHECK (length(btrim(agent_name)) > 0),
+    agent_version varchar(50) NOT NULL CHECK (length(btrim(agent_version)) > 0),
+    stop_reason varchar(100) NOT NULL CHECK (length(btrim(stop_reason)) > 0),
+    usage jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(usage)='object'),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    FOREIGN KEY(interpretation_id,human_update_id,event_id)
+        REFERENCES human_update_interpretations(id,human_update_id,event_id),
+    FOREIGN KEY(human_update_id,event_id) REFERENCES human_updates(id,event_id),
+    CHECK (is_execution_blocker = (blocker_kind <> 'NONE')),
+    CHECK (is_execution_blocker OR (coordination_needed=false AND replanning_may_be_needed=false)),
+    CHECK (requires_clarification = (clarification_question IS NOT NULL)),
+    CHECK (NOT requires_clarification OR NOT is_execution_blocker),
+    CHECK (is_execution_blocker = (authoritative_blocker_id IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS blocker_assessments_event_created_idx
+    ON blocker_assessments(event_id,created_at DESC);

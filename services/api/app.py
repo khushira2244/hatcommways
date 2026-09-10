@@ -40,6 +40,11 @@ from services.agent_runtime.human_update_interpretation import (
     HumanUpdateInterpretationWorkflow,
     StrandsHumanUpdateInterpretationAgent,
 )
+from services.agent_runtime.blocker_assessment import (
+    BlockerAssessmentRuntime,
+    BlockerAssessmentWorkflow,
+    StrandsBlockerAssessmentAgent,
+)
 from services.agent_runtime.participation_advisory import DeterministicParticipationAdvisory, StrandsParticipationAdvisoryAgent
 from services.planning_foundation.governance_service import GovernanceService
 from services.planning_foundation.governance_evidence_storage import LocalGovernanceEvidenceStorage, MAX_EVIDENCE_BYTES
@@ -72,7 +77,10 @@ from services.planning_foundation.participation_service import ParticipationServ
 from services.planning_foundation.actor_dashboard_service import ActorDashboardService
 from services.planning_foundation.human_update_service import HumanUpdateService
 from services.planning_foundation.human_update_interpretation_service import HumanUpdateInterpretationService
+from services.planning_foundation.blocker_assessment_service import BlockerAssessmentService
 from services.planning_foundation.human_update_models import (
+    AssessBlockerRequest,
+    BlockerAssessmentSnapshot,
     BlockerCreate,
     BlockerPatch,
     BlockerSnapshot,
@@ -178,6 +186,7 @@ def create_app(
     execute_planning_requests: bool = False,
     governance_upload_root: Path | None = None,
     human_update_interpretation_runtime: HumanUpdateInterpretationRuntime | None = None,
+    blocker_assessment_runtime: BlockerAssessmentRuntime | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Hatcommways API", version="0.1.0")
     app.add_middleware(
@@ -212,6 +221,16 @@ def create_app(
     )
     interpretation_execution_enabled = (
         execute_planning_requests or human_update_interpretation_runtime is not None
+    )
+    blocker_assessment_service = BlockerAssessmentService(database)
+    assessment_runtime = blocker_assessment_runtime or StrandsBlockerAssessmentAgent(
+        blocker_assessment_service
+    )
+    blocker_assessment_workflow = BlockerAssessmentWorkflow(
+        blocker_assessment_service, assessment_runtime
+    )
+    blocker_assessment_execution_enabled = (
+        execute_planning_requests or blocker_assessment_runtime is not None
     )
     participation_advisor = StrandsParticipationAdvisoryAgent() if execute_planning_requests else DeterministicParticipationAdvisory()
     setup_service = EventSetupService(database)
@@ -715,6 +734,38 @@ def create_app(
         session: AuthenticatedSession = Depends(authenticated),
     ):
         return human_update_interpretation_service.get_interpretation(
+            event_id, update_id, session.account.id
+        )
+
+    @app.post(
+        '/events/{event_id}/human-updates/{update_id}/assess-blocker',
+        response_model=BlockerAssessmentSnapshot,
+    )
+    def assess_human_update_blocker(
+        event_id: UUID,
+        update_id: UUID,
+        body: AssessBlockerRequest = AssessBlockerRequest(),
+        session: AuthenticatedSession = Depends(authenticated),
+    ):
+        if not blocker_assessment_execution_enabled:
+            raise ValidationError('blocker assessment agent execution is disabled')
+        return blocker_assessment_workflow.execute(
+            event_id=event_id,
+            update_id=update_id,
+            organizer_id=session.account.id,
+            retry=body.retry,
+        )
+
+    @app.get(
+        '/events/{event_id}/human-updates/{update_id}/blocker-assessment',
+        response_model=BlockerAssessmentSnapshot | None,
+    )
+    def get_human_update_blocker_assessment(
+        event_id: UUID,
+        update_id: UUID,
+        session: AuthenticatedSession = Depends(authenticated),
+    ):
+        return blocker_assessment_service.get_assessment(
             event_id, update_id, session.account.id
         )
 
