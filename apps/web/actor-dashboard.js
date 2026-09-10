@@ -1,7 +1,70 @@
-const q=new URLSearchParams(location.search),eventId=q.get('event'),root=document.querySelector('#actor-dashboard');
+const q=new URLSearchParams(location.search);
+const eventId=q.get('event');
+const root=document.querySelector('#actor-dashboard');
+let actorPreviewMap,actorFullMap;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const when=v=>v?new Date(v).toLocaleString(): 'Not scheduled'; const empty=t=>`<div class="empty">${esc(t)}</div>`;
-const item=(x,rejected=false)=>`<article class="item ${rejected?'rejected':''}"><b>${esc(x.work_name||x.title)}</b>${x.role_name?`<small>${esc(x.role_name)} · ${esc(x.stage_name||'')}</small>`:''}${x.approved_start?`<small>${when(x.approved_start)} – ${when(x.approved_end)}</small>`:''}${x.start_time?`<small>${when(x.start_time)} – ${when(x.end_time)} · ${esc(x.location||'Location not set')} · ${esc(x.status)}</small>`:''}${x.message?`<small>${esc(x.message)}</small>`:''}</article>`;
-function render(d,a){const {event,assignments,meetings,updates,setup,organizer}=d,upcoming=meetings.filter(m=>m.status!=='CANCELLED'&&new Date(m.end_time)>=new Date())[0],primary=assignments[0];document.querySelector('#actor-name').textContent=a.display_name;document.querySelector('#actor-avatar').textContent=a.display_name[0];document.querySelector('#dash-event-name').textContent=event.name;document.querySelector('#dash-event-category').textContent=event.category||'Uncategorized';document.querySelector('#dash-event-date').textContent=when(event.starts_at);document.querySelector('#dash-event-location').textContent=event.location_description;document.querySelector('#dash-status').textContent=d.participation_status.replace('_',' ');document.querySelector('#dash-role').textContent=primary?.role_name||'No approved role';document.querySelector('#dash-role-work').textContent=primary?.work_name||'';document.querySelector('#dash-time').textContent=primary?`${when(primary.approved_start)} – ${when(primary.approved_end)}`:when(event.starts_at);document.querySelector('#dash-next').textContent=upcoming?.title||primary?.work_name||'No upcoming activity';document.querySelector('#dash-about').textContent=event.purpose;document.querySelector('#dash-facts').textContent=`${assignments.length} approved assignment(s) · ${meetings.length} applicable meeting(s)`;document.querySelector('#dash-organizer').textContent=organizer?.display_name||'Event organizer';const works=assignments.map(x=>item(x)).join('')||empty('No active work assignments.');document.querySelector('#overview-work').innerHTML=works;document.querySelector('#all-work').innerHTML=works;document.querySelector('#rejected-work').innerHTML=d.rejected_selections.map(x=>item(x,true)).join('')||empty('No rejected selections.');const ms=meetings.map(x=>item(x)).join('')||empty('No upcoming meetings.');document.querySelector('#overview-meetings').innerHTML=ms;document.querySelector('#all-meetings').innerHTML=ms;const us=updates.map(x=>item(x)).join('')||empty('No messages or updates.');document.querySelector('#overview-updates').innerHTML=us;document.querySelector('#all-updates').innerHTML=us;document.querySelector('#event-info').innerHTML=`<p>${esc(event.purpose)}</p><p><b>Date:</b> ${when(event.starts_at)} – ${when(event.ends_at)}</p><p><b>Location:</b> ${esc(event.location_description)}</p><p><b>Map:</b> ${setup?.map_enabled?'Enabled; static preview in this version':'Not enabled'}</p>`;const resources=setup?.resources||[];document.querySelector('#event-resources').innerHTML=resources.map(r=>`<div class="item"><b>${esc(r.name)}</b><small>Need: ${esc(r.quantity??'Not specified')} ${esc(r.unit||'')}</small></div>`).join('')||empty('No participant resources configured.');root.hidden=false}
-document.querySelectorAll('.dash-nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.dash-nav button').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.dash-panel').forEach(p=>p.hidden=p.id!==`panel-${b.dataset.tab}`)});
-(async()=>{if(!getToken()){location.replace('./signin.html');return}if(!eventId){document.querySelector('#dashboard-error').textContent='Missing event id.';root.hidden=false;return}try{const [a,d]=await Promise.all([api('/auth/me'),api(`/events/${eventId}/actor-dashboard`)]);render(d,a)}catch(e){document.querySelector('#dashboard-error').textContent=e.message;root.hidden=false}})();
+const when=v=>v?new Date(v).toLocaleString():'Not scheduled';
+const empty=t=>'<div class="empty">'+esc(t)+'</div>';
+const item=(x,rejected=false)=>'<article class="item '+(rejected?'rejected':'')+'"><b>'+esc(x.work_name||x.title)+'</b>'+(x.role_name?'<small>'+esc(x.role_name)+' · '+esc(x.stage_name||'')+'</small>':'')+(x.approved_start?'<small>'+when(x.approved_start)+' – '+when(x.approved_end)+'</small>':'')+(x.start_time?'<small>'+when(x.start_time)+' – '+when(x.end_time)+' · '+esc(x.location||'Location not set')+' · '+esc(x.status)+'</small>':'')+(x.message?'<small>'+esc(x.message)+'</small>':'')+'</article>';
+
+function render(d,a){
+  const {event,assignments,meetings,updates,setup,organizer}=d;
+  const upcoming=meetings.filter(m=>m.status!=='CANCELLED'&&new Date(m.end_time)>=new Date())[0];
+  const primary=assignments[0];
+  document.querySelector('#actor-name').textContent=a.display_name;
+  document.querySelector('#actor-avatar').textContent=a.display_name[0];
+  document.querySelector('#dash-event-name').textContent=event.name;
+  document.querySelector('#dash-event-category').textContent=event.category||'Uncategorized';
+  document.querySelector('#dash-event-date').textContent=when(event.starts_at);
+  document.querySelector('#dash-event-location').textContent=event.location_description;
+  document.querySelector('#dash-status').textContent=d.participation_status.replace('_',' ');
+  document.querySelector('#dash-role').textContent=primary?.role_name||'No approved role';
+  document.querySelector('#dash-role-work').textContent=primary?.work_name||'';
+  document.querySelector('#dash-time').textContent=primary?(when(primary.approved_start)+' – '+when(primary.approved_end)):when(event.starts_at);
+  document.querySelector('#dash-next').textContent=upcoming?.title||primary?.work_name||'No upcoming activity';
+  document.querySelector('#dash-about').textContent=event.purpose;
+  document.querySelector('#dash-facts').textContent=assignments.length+' approved assignment(s) · '+meetings.length+' applicable meeting(s)';
+  document.querySelector('#dash-organizer').textContent=organizer?.display_name||'Event organizer';
+  const works=assignments.map(x=>item(x)).join('')||empty('No active work assignments.');
+  document.querySelector('#overview-work').innerHTML=works;
+  document.querySelector('#all-work').innerHTML=works;
+  document.querySelector('#rejected-work').innerHTML=d.rejected_selections.map(x=>item(x,true)).join('')||empty('No rejected selections.');
+  const ms=meetings.map(x=>item(x)).join('')||empty('No upcoming meetings.');
+  document.querySelector('#overview-meetings').innerHTML=ms;
+  document.querySelector('#all-meetings').innerHTML=ms;
+  const us=updates.map(x=>item(x)).join('')||empty('No messages or updates.');
+  document.querySelector('#overview-updates').innerHTML=us;
+  document.querySelector('#all-updates').innerHTML=us;
+  document.querySelector('#event-info').innerHTML='<p>'+esc(event.purpose)+'</p><p><b>Date:</b> '+when(event.starts_at)+' – '+when(event.ends_at)+'</p><p><b>Location:</b> '+esc(event.location_description)+'</p><p><b>Map:</b> '+(setup?.map_enabled?'Enabled with authorized event locations':'Not enabled')+'</p>';
+  const resources=setup?.resources||[];
+  document.querySelector('#event-resources').innerHTML=resources.map(r=>'<div class="item"><b>'+esc(r.name)+'</b><small>Need: '+esc(r.quantity??'Not specified')+' '+esc(r.unit||'')+'</small></div>').join('')||empty('No participant resources configured.');
+  root.hidden=false;
+}
+
+async function initializeActorMaps(mapData){
+  [actorPreviewMap,actorFullMap]=await Promise.all([
+    HatcommwaysEventMap.create(document.querySelector('#actor-map-preview'),mapData),
+    HatcommwaysEventMap.create(document.querySelector('#actor-map-full'),mapData,{filters:true})
+  ]);
+}
+
+document.querySelectorAll('.dash-nav button').forEach(button=>button.onclick=()=>{
+  document.querySelectorAll('.dash-nav button').forEach(item=>item.classList.toggle('active',item===button));
+  document.querySelectorAll('.dash-panel').forEach(panel=>panel.hidden=panel.id!=='panel-'+button.dataset.tab);
+  if(button.dataset.tab==='info')requestAnimationFrame(()=>actorFullMap?.activate());
+});
+
+(async()=>{
+  if(!getToken()){location.replace('./signin.html');return}
+  if(!eventId){document.querySelector('#dashboard-error').textContent='Missing event id.';root.hidden=false;return}
+  try{
+    const [account,data,mapData]=await Promise.all([
+      api('/auth/me'),api('/events/'+eventId+'/actor-dashboard'),api('/events/'+eventId+'/map')
+    ]);
+    render(data,account);
+    await initializeActorMaps(mapData);
+  }catch(error){
+    document.querySelector('#dashboard-error').textContent=error.message;
+    root.hidden=false;
+  }
+})();

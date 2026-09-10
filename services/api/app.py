@@ -93,6 +93,8 @@ from services.planning_foundation.coordination_models import (
 from services.planning_foundation.coordination_service import CoordinationService
 from services.planning_foundation.replanning_models import ReplanRequest,ReplanDecisionRequest,ReplanProposalSnapshot
 from services.planning_foundation.replanning_service import ReplanningService
+from services.planning_foundation.map_models import MapReadModel
+from services.planning_foundation.map_service import MapReadService
 from services.planning_foundation.human_update_models import (
     AssessBlockerRequest,
     BlockerAssessmentSnapshot,
@@ -195,6 +197,11 @@ class ResumeStateBody(BaseModel):
     last_open_stage_id: UUID | None = None
 
 
+class WebConfig(BaseModel):
+    google_maps_api_key: str | None = None
+    google_maps_map_id: str | None = None
+
+
 def create_app(
     database: Database,
     *,
@@ -204,6 +211,8 @@ def create_app(
     blocker_assessment_runtime: BlockerAssessmentRuntime | None = None,
     coordination_runtime: CoordinationRuntime | None = None,
     replanning_runtime: ReplanningRuntime | None = None,
+    google_maps_api_key: str | None = None,
+    google_maps_map_id: str | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Hatcommways API", version="0.1.0")
     app.add_middleware(
@@ -259,6 +268,7 @@ def create_app(
     replanning_execution_enabled=execute_planning_requests or replanning_runtime is not None
     participation_advisor = StrandsParticipationAdvisoryAgent() if execute_planning_requests else DeterministicParticipationAdvisory()
     setup_service = EventSetupService(database)
+    map_read_service = MapReadService(database)
     governance_service = GovernanceService(database)
     governance_storage = LocalGovernanceEvidenceStorage(governance_upload_root)
     governance_workflow = GovernanceWorkflow(governance_service, StrandsGovernanceAgent(governance_service))
@@ -303,6 +313,13 @@ def create_app(
         if credentials is None or credentials.scheme.lower() != "bearer":
             raise InvalidSessionError("authentication required")
         return credentials.credentials, auth.authenticate(credentials.credentials)
+
+    @app.get("/web-config",response_model=WebConfig)
+    def web_config(_session: AuthenticatedSession = Depends(authenticated)):
+        return WebConfig(
+            google_maps_api_key=google_maps_api_key,
+            google_maps_map_id=google_maps_map_id,
+        )
 
     def require_proposal_organizer(proposal_id: UUID, account_id: UUID) -> None:
         with database.connect() as connection:
@@ -895,6 +912,10 @@ def create_app(
     ):
         authorization.require_active_organizer(event_id, session.account.id)
         return setup_service.get(event_id, session.account.id)
+
+    @app.get('/events/{event_id}/map',response_model=MapReadModel)
+    def get_event_map(event_id:UUID,session:AuthenticatedSession=Depends(authenticated)):
+        return map_read_service.get(event_id,session.account.id)
 
     @app.get("/events/{event_id}/home")
     def get_event_home(event_id: UUID, session: AuthenticatedSession = Depends(authenticated)):

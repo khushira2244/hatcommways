@@ -495,6 +495,16 @@ CREATE TABLE IF NOT EXISTS human_updates (
     UNIQUE(id,event_id),
     UNIQUE(event_id,reporter_account_id,idempotency_key)
 );
+
+CREATE TABLE IF NOT EXISTS map_locations (
+ id uuid PRIMARY KEY,event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+ entity_type varchar(30) NOT NULL CHECK(entity_type IN('EVENT','ACTOR','RESOURCE','SPONSOR','SUPPORT_PARTNER','ACCESS_POINT','PARKING','MEETING_POINT','TRANSPORT','OTHER')),
+ entity_id uuid,display_name varchar(200) NOT NULL,latitude numeric(9,6) NOT NULL CHECK(latitude BETWEEN -90 AND 90),longitude numeric(9,6) NOT NULL CHECK(longitude BETWEEN -180 AND 180),
+ area_label varchar(200),location_precision varchar(30) NOT NULL CHECK(location_precision IN('EXACT','APPROXIMATE','ZONE','DEMO_APPROXIMATE')),
+ status varchar(100),visible boolean NOT NULL DEFAULT false,metadata jsonb NOT NULL DEFAULT '{}'::jsonb CHECK(jsonb_typeof(metadata)='object'),created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(event_id,entity_type,entity_id,display_name)
+);
+CREATE INDEX IF NOT EXISTS map_locations_event_visible_idx ON map_locations(event_id,entity_type) WHERE visible=true;
 ALTER TABLE human_updates DROP CONSTRAINT IF EXISTS human_updates_interpretation_status_check;
 ALTER TABLE human_updates DROP CONSTRAINT IF EXISTS human_updates_interpretation_lifecycle_check;
 ALTER TABLE human_updates DROP CONSTRAINT IF EXISTS human_updates_check;
