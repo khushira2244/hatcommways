@@ -764,3 +764,24 @@ ALTER TABLE coordination_requests ADD CONSTRAINT coordination_requests_proposal_
     FOREIGN KEY(proposal_id) REFERENCES coordination_proposals(id);
 CREATE INDEX IF NOT EXISTS coordination_requests_event_created_idx
     ON coordination_requests(event_id,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS replan_requests (
+ id uuid PRIMARY KEY,event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,blocker_id uuid NOT NULL UNIQUE REFERENCES blockers(id) ON DELETE CASCADE,
+ coordination_proposal_id uuid NOT NULL UNIQUE REFERENCES coordination_proposals(id),organizer_id uuid NOT NULL REFERENCES accounts(id),source_fingerprint char(64) NOT NULL,
+ source_versions jsonb NOT NULL,status varchar(20) NOT NULL CHECK(status IN('RUNNING','PROPOSED','APPROVED','REJECTED','FAILED','STALE')),attempt_count integer NOT NULL,
+ proposal_id uuid,failure_code varchar(100),failed_at timestamptz,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS replan_proposals (
+ id uuid PRIMARY KEY,request_id uuid NOT NULL UNIQUE REFERENCES replan_requests(id) ON DELETE CASCADE,event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+ blocker_id uuid NOT NULL UNIQUE REFERENCES blockers(id),affected_work_resolution_id uuid NOT NULL REFERENCES affected_work_resolutions(id),coordination_proposal_id uuid NOT NULL REFERENCES coordination_proposals(id),
+ current_plan_version integer NOT NULL,source_graph_fingerprint char(64) NOT NULL,proposed_changes jsonb NOT NULL,rationale varchar(3000) NOT NULL,confidence numeric(4,3) NOT NULL,
+ unaffected_work_ids uuid[] NOT NULL,affected_actor_ids uuid[] NOT NULL,status varchar(20) NOT NULL CHECK(status IN('PROPOSED','APPROVED','REJECTED','STALE')),
+ source_fingerprint char(64) NOT NULL,source_versions jsonb NOT NULL,provider_name varchar(100) NOT NULL,model_id varchar(300) NOT NULL,agent_name varchar(200) NOT NULL,
+ agent_version varchar(50) NOT NULL,stop_reason varchar(100) NOT NULL,usage jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),decided_at timestamptz
+);
+ALTER TABLE replan_requests DROP CONSTRAINT IF EXISTS replan_requests_proposal_id_fkey;
+ALTER TABLE replan_requests ADD CONSTRAINT replan_requests_proposal_id_fkey FOREIGN KEY(proposal_id) REFERENCES replan_proposals(id);
+CREATE TABLE IF NOT EXISTS replan_applications (
+ id uuid PRIMARY KEY,event_id uuid NOT NULL REFERENCES events(id),blocker_id uuid NOT NULL REFERENCES blockers(id),proposal_id uuid NOT NULL UNIQUE REFERENCES replan_proposals(id),
+ previous_event_version integer NOT NULL,new_event_version integer NOT NULL,previous_state jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now()
+);

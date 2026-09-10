@@ -1,0 +1,32 @@
+from datetime import timedelta
+from uuid import UUID,uuid4
+import pytest
+from fastapi.testclient import TestClient
+from services.api import create_app
+from tests.planning_foundation.test_coordination_agent import FakeRuntime as CoordinationRuntime,decision as coordination_decision,prepare as prepare_resolution
+from tests.planning_foundation.test_human_updates_blockers import scenario as scenario_fixture
+
+@pytest.fixture
+def scenario(database,service):return scenario_fixture.__wrapped__(database,service)
+class Runtime:
+ def __init__(self):self.calls=[];self.output=None
+ def generate(self,**kwargs):self.calls.append(kwargs);return self.output
+def setup(database,s):
+ blocker,resolution=prepare_resolution(database,s);cr=CoordinationRuntime();cr.output=coordination_decision(s,blocker,resolution['id'],coordination_possible=False,requires_replanning=True,actions=[],rationale='Confirmed timing cannot be preserved.')
+ client=TestClient(create_app(database,coordination_runtime=cr));coord=client.post(f"/events/{s['event'].id}/blockers/{blocker}/coordinate",headers=s['oh'],json={}).json();return blocker,resolution,coord
+def proposal(s,blocker,resolution,coord,work_id=None):
+ work=s['work'][0];return {'event_id':str(s['event'].id),'blocker_id':blocker,'affected_work_resolution_id':resolution['id'],'coordination_proposal_id':coord['id'],'current_plan_version':resolution['resolved_event_version'],'source_graph_fingerprint':resolution['graph_fingerprint'],'proposed_changes':[{'change_type':'WORK_WINDOW_SHIFT','target_work_id':str(work_id or work.id),'target_stage_id':None,'target_meeting_id':None,'target_actor_id':None,'proposed_start':(work.starts_at+timedelta(hours=1)).isoformat(),'proposed_end':(work.ends_at+timedelta(hours=1)).isoformat(),'concise_reason':'Shift affected work after delayed arrival.','requires_human_approval':True}],'rationale':'Smallest affected timing shift.','confidence':.9}
+def snapshots(database,event):
+ with database.connect() as c:return c.execute('SELECT * FROM work_items WHERE event_id=%s ORDER BY id',(event,)).fetchall(),c.execute('SELECT * FROM blockers WHERE event_id=%s ORDER BY id',(event,)).fetchall()
+def test_agent_proposes_only_and_approval_changes_affected_work(database,scenario):
+ blocker,resolution,coord=setup(database,scenario);runtime=Runtime();runtime.output=proposal(scenario,blocker,resolution,coord);client=TestClient(create_app(database,replanning_runtime=runtime));before_work,before_blockers=snapshots(database,scenario['event'].id);endpoint=f"/events/{scenario['event'].id}/blockers/{blocker}/replan";generated=client.post(endpoint,headers=scenario['oh'],json={});assert generated.status_code==200,generated.text;p=generated.json();assert client.post(endpoint,headers=scenario['oh'],json={}).json()['id']==p['id'];assert len(runtime.calls)==1;assert snapshots(database,scenario['event'].id)==(before_work,before_blockers);approved=client.post(endpoint+f"/{p['id']}/approve",headers=scenario['oh'],json={'expected_event_version':p['current_plan_version']});assert approved.status_code==200,approved.text;assert approved.json()['status']=='APPROVED'
+ with database.connect() as c:
+  changed=c.execute('SELECT * FROM work_items WHERE id=%s',(scenario['work'][0].id,)).fetchone();unrelated=c.execute('SELECT * FROM work_items WHERE id=%s',(scenario['work'][1].id,)).fetchone();block=c.execute('SELECT * FROM blockers WHERE id=%s',(blocker,)).fetchone();event=c.execute('SELECT * FROM events WHERE id=%s',(scenario['event'].id,)).fetchone();assert changed['starts_at']==scenario['work'][0].starts_at+timedelta(hours=1);assert unrelated==next(x for x in before_work if x['id']==scenario['work'][1].id);assert block['condition_state']=='OPEN';assert event['version']==p['current_plan_version']+1;assert c.execute('SELECT count(*) FROM replan_applications').fetchone()['count']==1
+def test_reject_and_stale_approval_never_mutate_plan(database,scenario):
+ blocker,resolution,coord=setup(database,scenario);runtime=Runtime();runtime.output=proposal(scenario,blocker,resolution,coord);client=TestClient(create_app(database,replanning_runtime=runtime));endpoint=f"/events/{scenario['event'].id}/blockers/{blocker}/replan";p=client.post(endpoint,headers=scenario['oh'],json={}).json();before=snapshots(database,scenario['event'].id);rejected=client.post(endpoint+f"/{p['id']}/reject",headers=scenario['oh'],json={'expected_event_version':p['current_plan_version']});assert rejected.json()['status']=='REJECTED';assert snapshots(database,scenario['event'].id)==before
+def test_unaffected_work_output_is_rejected_and_failure_retries(database,scenario):
+ blocker,resolution,coord=setup(database,scenario);runtime=Runtime();runtime.output=proposal(scenario,blocker,resolution,coord,uuid4());client=TestClient(create_app(database,replanning_runtime=runtime));endpoint=f"/events/{scenario['event'].id}/blockers/{blocker}/replan";r=client.post(endpoint,headers=scenario['oh'],json={});assert r.status_code==422;assert client.post(endpoint,headers=scenario['oh'],json={}).status_code==409
+def test_stale_approval_is_atomic(database,scenario):
+ blocker,resolution,coord=setup(database,scenario);runtime=Runtime();runtime.output=proposal(scenario,blocker,resolution,coord);client=TestClient(create_app(database,replanning_runtime=runtime));endpoint=f"/events/{scenario['event'].id}/blockers/{blocker}/replan";p=client.post(endpoint,headers=scenario['oh'],json={}).json();before=snapshots(database,scenario['event'].id)
+ with database.connect() as c:c.execute('UPDATE events SET version=version+1 WHERE id=%s',(scenario['event'].id,))
+ response=client.post(endpoint+f"/{p['id']}/approve",headers=scenario['oh'],json={'expected_event_version':p['current_plan_version']+1});assert response.status_code==409;assert snapshots(database,scenario['event'].id)==before

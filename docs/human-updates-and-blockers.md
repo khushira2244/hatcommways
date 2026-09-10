@@ -21,6 +21,10 @@ All endpoints require the existing bearer session. Actor and organizer identitie
 | GET | `/events/{event_id}/blockers/{blocker_id}/affected-work` | Active organizer; persisted resolution or null |
 | POST | `/events/{event_id}/blockers/{blocker_id}/coordinate` | Active organizer; explicit bounded Strands/Nova execution |
 | GET | `/events/{event_id}/blockers/{blocker_id}/coordination` | Active organizer; persisted proposal or null |
+| POST | `/events/{event_id}/blockers/{blocker_id}/replan` | Active organizer; explicit selective Replanning Agent execution |
+| GET | `/events/{event_id}/blockers/{blocker_id}/replan` | Active organizer; persisted proposal or null |
+| POST | `/events/{event_id}/blockers/{blocker_id}/replan/{proposal_id}/approve` | Active organizer; validate and apply affected changes |
+| POST | `/events/{event_id}/blockers/{blocker_id}/replan/{proposal_id}/reject` | Active organizer; reject without plan mutation |
 
 POST human updates accepts `text`, optional `stage_id`, `work_id`, `actor_requirement_id`, `participation_id`, and `idempotency_key`. Blank text and text over 10,000 characters are rejected. Whitespace, Unicode, and line endings are otherwise preserved exactly. A work link infers its stage; a role/participation link infers its ancestors. Conflicting or cross-event links are rejected. An actor's references must all match one of their accepted assignments. Event-level reports need at least one accepted assignment. A pending request, an unrelated membership, or a withdrawn/removed participation does not grant access. Partial approvals qualify through their accepted assignments only.
 
@@ -78,11 +82,19 @@ Actions are advisory records only. `NOTIFY_ACTOR` sends no notification, `RESCHE
 
 `coordination_requests` provides `RUNNING`, `SUCCEEDED`, and `FAILED` lifecycle state. Runtime or validation failure persists only a bounded failure code and requires `retry: true`. The source fingerprint covers the event, blocker, confirmed affected graph, affected stage/work versions, relevant participation windows, meeting versions, and event setup version. Same-state retries reuse the proposal without another model call. Changed relevant state returns HTTP 409. Event locking ensures concurrent calls produce one effective model execution.
 
+## Selective replanning and approval
+
+Replanning is eligible only for an open blocker with a current affected-work resolution and successful current coordination proposal whose `requires_replanning` value is true. Its single Strands/Nova tool receives the same bounded affected scope, the coordination conclusion, affected assignments and availability, relevant meetings, current versions, and an explicit frozen list of unaffected authoritative work IDs. It does not receive pending work or permission to write.
+
+The Replanning Agent returns typed, bounded changes. It never applies them. Deterministic validation rejects event/blocker/resolution mismatches, stale versions or graph fingerprints, unaffected or cross-event work/stage/actor/meeting IDs, incomplete or invalid timing windows, and timing changes without the required affected target. Generation has `RUNNING`, `PROPOSED`, and `FAILED` behavior with explicit retry and same-state reuse. Proposal decisions add `APPROVED`, `REJECTED`, and stale-conflict behavior.
+
+Organizer approval is the only application boundary. It locks current state, validates the proposal again, updates only approved affected work/stage or relevant meeting timing, increments each changed object version and the event version, and stores the complete prior rows in `replan_applications` with proposal and blocker provenance. Rejection changes only proposal lifecycle. A stale approval returns HTTP 409 and the transaction applies no partial changes. Suggestions to split, remove, or reassign remain suggestions. Approval never clears the blocker, changes dependencies, creates/deletes work, changes participation, or sends notifications.
+
 ## Notifications and deferred work
 
 No notifications are emitted yet. `event_notifications` requires a non-null `participation_request_id`, restricts its type to PARTICIPATION_REQUEST, and its reader hydrates that request. `actor_updates` supports actor-facing announcements and meeting/decision messages, not organizer human-report notifications. Reusing either for these reports would require changing its contract. This foundation does not create a second notification system.
 
-Replanning, organizer replan approval, participant blocker visibility, frontend UI, notifications redesign, and EventBridge/SQS/AgentCore integration remain deferred. Assessment stores direct impact metadata; the deterministic resolver expands confirmed work dependencies; coordination stores bounded proposals. None writes schedules, dependencies, meetings, actor assignments, accounts, participation records, or plan versions.
+Participant blocker visibility, frontend UI, notifications redesign, and EventBridge/SQS/AgentCore integration remain deferred. The business chain is Human Update → Interpretation → Blocker Assessment → authoritative Blocker → deterministic affected work → Coordination proposal → selective Replanning proposal → organizer approval → new authoritative plan version. AI proposes, deterministic services validate, humans approve consequential changes, and PostgreSQL remains authoritative.
 
 ## Verification
 

@@ -50,6 +50,7 @@ from services.agent_runtime.coordination import (
     CoordinationWorkflow,
     StrandsCoordinationAgent,
 )
+from services.agent_runtime.replanning import ReplanningRuntime,ReplanningWorkflow,StrandsReplanningAgent
 from services.agent_runtime.participation_advisory import DeterministicParticipationAdvisory, StrandsParticipationAdvisoryAgent
 from services.planning_foundation.governance_service import GovernanceService
 from services.planning_foundation.governance_evidence_storage import LocalGovernanceEvidenceStorage, MAX_EVIDENCE_BYTES
@@ -90,6 +91,8 @@ from services.planning_foundation.coordination_models import (
     CoordinationProposalSnapshot,
 )
 from services.planning_foundation.coordination_service import CoordinationService
+from services.planning_foundation.replanning_models import ReplanRequest,ReplanDecisionRequest,ReplanProposalSnapshot
+from services.planning_foundation.replanning_service import ReplanningService
 from services.planning_foundation.human_update_models import (
     AssessBlockerRequest,
     BlockerAssessmentSnapshot,
@@ -200,6 +203,7 @@ def create_app(
     human_update_interpretation_runtime: HumanUpdateInterpretationRuntime | None = None,
     blocker_assessment_runtime: BlockerAssessmentRuntime | None = None,
     coordination_runtime: CoordinationRuntime | None = None,
+    replanning_runtime: ReplanningRuntime | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Hatcommways API", version="0.1.0")
     app.add_middleware(
@@ -250,6 +254,9 @@ def create_app(
     coordination_agent_runtime = coordination_runtime or StrandsCoordinationAgent(coordination_service)
     coordination_workflow = CoordinationWorkflow(coordination_service, coordination_agent_runtime)
     coordination_execution_enabled = execute_planning_requests or coordination_runtime is not None
+    replanning_service=ReplanningService(database)
+    replanning_workflow=ReplanningWorkflow(replanning_service,replanning_runtime or StrandsReplanningAgent(replanning_service))
+    replanning_execution_enabled=execute_planning_requests or replanning_runtime is not None
     participation_advisor = StrandsParticipationAdvisoryAgent() if execute_planning_requests else DeterministicParticipationAdvisory()
     setup_service = EventSetupService(database)
     governance_service = GovernanceService(database)
@@ -838,6 +845,20 @@ def create_app(
         session: AuthenticatedSession = Depends(authenticated),
     ):
         return coordination_service.get_proposal(event_id, blocker_id, session.account.id)
+
+    @app.post('/events/{event_id}/blockers/{blocker_id}/replan',response_model=ReplanProposalSnapshot)
+    def generate_replan(event_id:UUID,blocker_id:UUID,body:ReplanRequest=ReplanRequest(),session:AuthenticatedSession=Depends(authenticated)):
+        if not replanning_execution_enabled: raise ValidationError('replanning agent execution is disabled')
+        return replanning_workflow.execute(event_id=event_id,blocker_id=blocker_id,organizer_id=session.account.id,retry=body.retry)
+    @app.get('/events/{event_id}/blockers/{blocker_id}/replan',response_model=ReplanProposalSnapshot|None)
+    def get_replan(event_id:UUID,blocker_id:UUID,session:AuthenticatedSession=Depends(authenticated)):
+        return replanning_service.get(event_id,blocker_id,session.account.id)
+    @app.post('/events/{event_id}/blockers/{blocker_id}/replan/{proposal_id}/approve',response_model=ReplanProposalSnapshot)
+    def approve_replan(event_id:UUID,blocker_id:UUID,proposal_id:UUID,body:ReplanDecisionRequest,session:AuthenticatedSession=Depends(authenticated)):
+        return replanning_service.decide(event_id,blocker_id,proposal_id,session.account.id,body.expected_event_version,True)
+    @app.post('/events/{event_id}/blockers/{blocker_id}/replan/{proposal_id}/reject',response_model=ReplanProposalSnapshot)
+    def reject_replan(event_id:UUID,blocker_id:UUID,proposal_id:UUID,body:ReplanDecisionRequest,session:AuthenticatedSession=Depends(authenticated)):
+        return replanning_service.decide(event_id,blocker_id,proposal_id,session.account.id,body.expected_event_version,False)
 
     @app.post('/events/{event_id}/blockers', status_code=201, response_model=BlockerSnapshot)
     def create_blocker(event_id: UUID, body: BlockerCreate, session: AuthenticatedSession = Depends(authenticated)):
