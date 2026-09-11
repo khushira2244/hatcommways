@@ -125,12 +125,20 @@ class HumanUpdateService:
     def list_updates(self, event_id: UUID, account_id: UUID) -> list[HumanUpdateSnapshot]:
         with self.database.connect() as c:
             event = self._event(c, event_id, account_id)
-            self._require_organizer(c, event, account_id)
+            organizer = self._is_organizer(c, event, account_id)
+            if not organizer:
+                accepted = c.execute(
+                    """SELECT 1 FROM participations WHERE event_id=%s AND account_id=%s
+                       AND status='ACCEPTED' LIMIT 1""", (event_id, account_id)
+                ).fetchone()
+                if not accepted:
+                    raise AuthorizationError('accepted participation is required')
             rows = c.execute(
                 """SELECT h.*,to_jsonb(i) AS interpretation FROM human_updates h
                    LEFT JOIN human_update_interpretations i ON i.human_update_id=h.id
-                   WHERE h.event_id=%s ORDER BY h.created_at DESC,h.id""",
-                (event_id,),
+                   WHERE h.event_id=%s""" + ("" if organizer else " AND h.reporter_account_id=%s") +
+                   " ORDER BY h.created_at DESC,h.id",
+                (event_id,) if organizer else (event_id, account_id),
             ).fetchall()
             return [self._report(row) for row in rows]
 

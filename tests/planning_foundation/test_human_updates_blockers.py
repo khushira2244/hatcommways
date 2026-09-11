@@ -142,8 +142,14 @@ def test_participant_scope_permissions_and_organizer_reports(database, scenario)
     own=s['client'].post(base+'/human-updates',headers=s['oh'],json={'text':'Organizer report','work_id':str(s['work'][1].id)})
     assert own.status_code == 201 and own.json()['source_type'] == 'ORGANIZER'
     update=report(s).json()
+    actor_updates=s['client'].get(base+'/human-updates',headers=s['ah'])
+    assert actor_updates.status_code == 200
+    assert actor_updates.json()
+    assert all(row['reporter_account_id'] == str(s['actor']) for row in actor_updates.json())
+    assert all(row['original_text'] != 'Organizer report' for row in actor_updates.json())
     for headers in (s['ah'],s['sh']):
-        assert s['client'].get(base+'/human-updates',headers=headers).status_code == 403
+        if headers == s['sh']:
+            assert s['client'].get(base+'/human-updates',headers=headers).status_code == 403
         assert s['client'].get(base+'/blockers',headers=headers).status_code == 403
         assert s['client'].post(base+'/blockers',headers=headers,json={'human_update_id':update['id'],'title':'Blocker','summary':'Summary'}).status_code == 403
     blocker=create_blocker(s,update['id']).json()
@@ -151,6 +157,7 @@ def test_participant_scope_permissions_and_organizer_reports(database, scenario)
     with database.connect() as c:
         c.execute("UPDATE participations SET status='WITHDRAWN_BY_PARTICIPANT' WHERE id=%s",(s['participation']['id'],))
     assert report(s).status_code == 403
+    assert s['client'].get(base+'/human-updates',headers=s['ah']).status_code == 403
 
 
 def test_cross_event_source_context_and_blocker_ids_rejected(database, service, scenario):
