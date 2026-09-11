@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Actor Requirements — Hatcommways</title>
   <link rel="stylesheet" href="./styles.css">
-  <link rel="stylesheet" href="./actor-tree.css">
+  <link rel="stylesheet" href="./actor-tree.css?v=20260911-summary-actions2">
 </head>
 <body>
   <div id="actor-tree-page" hidden>
@@ -19,12 +19,6 @@
         <div><h1>Design Actor Requirements</h1><p>Define the people structure needed for the confirmed event plan. No real people are assigned here.</p></div>
         <span id="actor-status">Not started</span>
       </header>
-      <section class="actor-actions" aria-label="Actor structure actions">
-        <button class="button button--primary" id="generate-actors">Design Actor Requirements</button>
-        <button class="button button--primary" id="confirm-actor-structure" hidden>Confirm Actor Structure</button>
-        <a class="button button--primary" id="continue-event-setup" hidden>Continue to Event Setup</a>
-        <a class="button button--secondary" id="back-inside-stage">Back to Work Design</a>
-      </section>
       <div class="actor-workspace">
         <section class="tree-card" aria-labelledby="tree-title">
           <h2 id="tree-title">Event Actor Hierarchy</h2>
@@ -40,10 +34,15 @@
               <div><dt>Selected Stage</dt><dd id="summary-stage"></dd></div>
               <div><dt>Selected Role</dt><dd id="summary-role">—</dd></div>
               <div><dt>Required Count</dt><dd id="summary-count">—</dd></div>
-              <div><dt>Status</dt><dd><span class="plan-status" id="summary-status">�</span></dd></div>
+              <div><dt>Status</dt><dd><span class="plan-status" id="summary-status">—</span></dd></div>
             </dl>
           </section>
-
+          <section class="actor-actions" aria-label="Actor structure actions">
+            <button class="button button--primary" id="generate-actors">Design Actor Requirements</button>
+            <button class="button button--primary summary-confirm-action" id="confirm-actor-structure" hidden>Confirm Actor Structure</button>
+            <a class="button button--primary" id="continue-event-setup" hidden>Continue to Event Setup</a>
+            <a class="button button--secondary" id="back-inside-stage">Back to Work Design</a>
+          </section>
         </aside>
       </div>
       <p class="actor-message" id="actor-message" role="alert"></p>

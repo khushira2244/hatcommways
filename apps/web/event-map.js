@@ -198,5 +198,5 @@
     };
   }
 
-  global.HatcommwaysEventMap={create,infoContent,loadGoogleMaps,SUPPORTED_TYPES};
+  global.HatcommwaysEventMap={create,infoContent,loadGoogleMaps,getMapId:()=>configuredMapId,SUPPORTED_TYPES};
 })(window);

@@ -87,8 +87,13 @@ CREATE TABLE IF NOT EXISTS event_setups (
     sponsors_support jsonb NOT NULL DEFAULT '[]'::jsonb,
     resource_needs jsonb NOT NULL DEFAULT '[]'::jsonb,
     contribution_links jsonb NOT NULL DEFAULT '[]'::jsonb,
+    event_media jsonb NOT NULL DEFAULT '[]'::jsonb,
+    cover_image_data_url text,
     map_enabled boolean NOT NULL DEFAULT false,
     default_view varchar(100),
+    event_latitude double precision,
+    event_longitude double precision,
+    map_area_label varchar(200),
     participation_dimensions jsonb NOT NULL DEFAULT '[]'::jsonb,
     event_visibility varchar(20) NOT NULL DEFAULT 'PRIVATE'
         CHECK (event_visibility IN ('PUBLIC', 'UNLISTED', 'PRIVATE')),
@@ -495,6 +500,11 @@ CREATE TABLE IF NOT EXISTS human_updates (
     UNIQUE(id,event_id),
     UNIQUE(event_id,reporter_account_id,idempotency_key)
 );
+ALTER TABLE event_setups ADD COLUMN IF NOT EXISTS event_media jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE event_setups ADD COLUMN IF NOT EXISTS cover_image_data_url text;
+ALTER TABLE event_setups ADD COLUMN IF NOT EXISTS event_latitude double precision;
+ALTER TABLE event_setups ADD COLUMN IF NOT EXISTS event_longitude double precision;
+ALTER TABLE event_setups ADD COLUMN IF NOT EXISTS map_area_label varchar(200);
 
 CREATE TABLE IF NOT EXISTS map_locations (
  id uuid PRIMARY KEY,event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,

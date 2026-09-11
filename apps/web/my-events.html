@@ -1,1 +1,34 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Events — Hatcommways</title><link rel="stylesheet" href="./styles.css"><link rel="stylesheet" href="./my-events.css"></head><body><div id="my-events-page" hidden><header class="app-header"><a class="brand" href="./app.html"><img class="brand-logo" src="./hatcommways-logo.png" alt="Hatcommways"></a><nav class="app-nav"><a href="./app.html">Explore</a><a class="is-active" href="./my-events.html">My Events</a><a href="./create-event.html">Create Event</a></nav><div class="workspace-account"><span id="me-avatar"></span><div><strong id="me-name"></strong><small id="me-type"></small></div></div></header><main class="my-events"><header><div><h1>My Events</h1><p>Continue organizing your events from where you stopped.</p></div><a class="button button--primary" href="./create-event.html">Create Event</a></header><section><h2>Organizing</h2><div class="event-list" id="organizing-events"></div></section><section><h2>Participating</h2><div class="event-list" id="participating-events"></div></section><p id="my-events-error" role="alert"></p></main></div><script src="./auth.js"></script><script src="./my-events.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>My Events — Hatcommways</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet" href="./auth.css">
+    <link rel="stylesheet" href="./my-events.css?v=20260911-grid">
+  </head>
+  <body>
+    <div id="my-events-page" hidden>
+      <header class="app-header">
+        <a class="brand" href="./app.html" aria-label="Hatcommways Explore"><img class="brand-logo" src="./hatcommways-logo.png" alt="Hatcommways"></a>
+        <nav class="app-nav" aria-label="Authenticated navigation"><a href="./app.html">Explore</a><a class="is-active" href="./my-events.html">My Events</a><a href="./create-event.html">Create Event</a></nav>
+        <div class="account-menu">
+          <button id="me-account-trigger" class="account-menu__button" type="button" aria-expanded="false" aria-controls="me-account-panel"><span class="account-avatar" id="me-avatar"></span><span class="account-trigger-copy"><strong id="me-name"></strong><small id="me-type"></small></span><span aria-hidden="true">⌄</span></button>
+          <div class="account-menu__panel" id="me-account-panel" hidden><a href="./app.html">Explore Events</a><button class="signout-button" id="me-signout" type="button">Sign Out</button></div>
+        </div>
+      </header>
+      <main class="my-events">
+        <header><div><h1>My Events</h1><p>Continue organizing and participating in community events.</p></div><a class="button button--primary" href="./create-event.html">Create Event</a></header>
+        <section><h2>Organizing</h2><div class="event-list" id="organizing-events"></div></section>
+        <section><h2>Participating</h2><div class="event-list" id="participating-events"></div></section>
+        <p id="my-events-error" role="alert"></p>
+      </main>
+    </div>
+    <script src="./auth.js?v=20260911-home"></script>
+    <script src="./my-events.js?v=20260911-home"></script>
+  </body>
+</html>

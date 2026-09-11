@@ -73,7 +73,29 @@ class ContributionLink(SetupModel):
     purpose: str | None = Field(default=None, max_length=1000)
     visibility_enabled: bool = False
 
-    _external = field_validator("external_url")(validate_external_url)
+    @field_validator("external_url")
+    @classmethod
+    def validate_payment_destination(cls, value: str) -> str:
+        parsed = urlparse(value)
+        if parsed.scheme in {"http", "https"} and parsed.netloc:
+            return value
+        if "@" in value and not any(character.isspace() for character in value):
+            return value
+        raise ValueError("payment destination must be an http(s) link or payment/UPI ID")
+
+
+class EventMedia(SetupModel):
+    id: str = Field(min_length=1, max_length=100)
+    media_type: str = Field(pattern="^(IMAGE|VIDEO)$")
+    data_url: str = Field(min_length=1, max_length=22000000)
+    caption: str | None = Field(default=None, max_length=200)
+
+    @field_validator("data_url")
+    @classmethod
+    def safe_media_data(cls, value: str) -> str:
+        if not (value.startswith("data:image/") or value.startswith("data:video/")):
+            raise ValueError("event media must be an image or video data URL")
+        return value
 
 
 class ParticipationDimension(StrEnum):
@@ -87,6 +109,15 @@ class MapSettings(SetupModel):
     map_enabled: bool = False
     default_view: str | None = Field(default=None, max_length=100)
     participation_dimensions: list[ParticipationDimension] = Field(default_factory=list)
+    event_latitude: float | None = Field(default=None, ge=-90, le=90)
+    event_longitude: float | None = Field(default=None, ge=-180, le=180)
+    area_label: str | None = Field(default=None, max_length=200)
+
+    @model_validator(mode="after")
+    def coordinates_are_paired(self) -> Self:
+        if (self.event_latitude is None) != (self.event_longitude is None):
+            raise ValueError("event latitude and longitude must be provided together")
+        return self
 
     @field_validator("participation_dimensions")
     @classmethod
@@ -116,8 +147,17 @@ class EventSetupSettings(SetupModel):
     sponsors_support: list[SponsorSupportEntry] = Field(default_factory=list)
     resources: list[ResourceNeedEntry] = Field(default_factory=list)
     contribution_links: list[ContributionLink] = Field(default_factory=list)
+    event_media: list[EventMedia] = Field(default_factory=list, max_length=12)
+    cover_image_data_url: str | None = Field(default=None, max_length=8000000)
     map_settings: MapSettings = Field(default_factory=MapSettings)
     privacy_settings: PrivacySettings = Field(default_factory=PrivacySettings)
+
+    @field_validator("cover_image_data_url")
+    @classmethod
+    def safe_cover_image(cls, value: str | None) -> str | None:
+        if value is not None and not value.startswith("data:image/"):
+            raise ValueError("cover image must be an image data URL")
+        return value
 
 
 class EventSetupUpdateRequest(EventSetupSettings):

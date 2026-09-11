@@ -71,9 +71,11 @@ class ParticipationService:
                 owner=c.execute("SELECT 1 FROM event_memberships WHERE event_id=%s AND account_id=%s AND role='ORGANIZER' AND status='ACTIVE'",(row['event_id'],account_id)).fetchone()
                 if not owner: raise AuthorizationError('organizer authorization required')
             elif account_id and row['requester_account_id']!=account_id: raise AuthorizationError('request belongs to another account')
-            items=c.execute("""SELECT pri.*,s.canonical_name AS stage_name,w.canonical_name AS work_name,w.starts_at AS work_start,w.ends_at AS work_end,ar.canonical_role_name AS role_name
+            items=c.execute("""SELECT pri.*,s.canonical_name AS stage_name,w.canonical_name AS work_name,w.starts_at AS work_start,w.ends_at AS work_end,
+                    ar.canonical_role_name AS role_name,ar.minimum_required_count,
+                    (SELECT count(*) FROM participations p WHERE p.actor_requirement_id=ar.id AND p.status='ACCEPTED') AS accepted_count
                 FROM participation_request_items pri JOIN stages s ON s.id=pri.stage_id JOIN work_items w ON w.id=pri.work_id JOIN actor_requirements ar ON ar.id=pri.actor_requirement_id WHERE participation_request_id=%s ORDER BY pri.created_at""",(request_id,)).fetchall()
-        return dict(row)|{'items':items}
+        return dict(row)|{'items':[dict(item)|{'remaining_count':max(0,item['minimum_required_count']-item['accepted_count'])} for item in items]}
 
     def notifications(self,event_id,organizer_id):
         with self.database.connect() as c:

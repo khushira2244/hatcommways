@@ -266,7 +266,10 @@ def create_app(
     replanning_service=ReplanningService(database)
     replanning_workflow=ReplanningWorkflow(replanning_service,replanning_runtime or StrandsReplanningAgent(replanning_service))
     replanning_execution_enabled=execute_planning_requests or replanning_runtime is not None
-    participation_advisor = StrandsParticipationAdvisoryAgent() if execute_planning_requests else DeterministicParticipationAdvisory()
+    # Participation review is an inline user interaction. Keep it deterministic and
+    # immediate; the global planning-agent switch must not turn this request into a
+    # blocking Bedrock call.
+    participation_advisor = DeterministicParticipationAdvisory()
     setup_service = EventSetupService(database)
     map_read_service = MapReadService(database)
     governance_service = GovernanceService(database)
@@ -414,6 +417,8 @@ def create_app(
                     (SELECT count(*) FROM stages s WHERE s.event_id=e.id) AS stage_count,
                     (SELECT count(*) FROM work_items w WHERE w.event_id=e.id) AS work_count,
                     (SELECT count(*) FROM actor_requirements a WHERE a.event_id=e.id) AS actor_requirement_count,
+                    (SELECT count(*) FROM stages s WHERE s.event_id=e.id AND NOT EXISTS(SELECT 1 FROM work_items w WHERE w.stage_id=s.id)) AS stages_without_work,
+                    (SELECT count(*) FROM work_items w WHERE w.event_id=e.id AND NOT EXISTS(SELECT 1 FROM actor_requirements a WHERE a.work_id=w.id)) AS work_without_actor_requirements,
                     EXISTS(SELECT 1 FROM event_setups es WHERE es.event_id=e.id) AS setup_saved
                    FROM event_memberships m JOIN events e ON e.id=m.event_id
                    LEFT JOIN event_resume_states r ON r.event_id=e.id AND r.account_id=m.account_id
@@ -439,12 +444,26 @@ def create_app(
                 target=f"actor-dashboard.html?event={event['id']}" if participation_status in ('APPROVED','PARTIALLY_APPROVED') else f"join-actor.html?event={event['id']}"
                 participating.append({"event_id":event["id"],"event_name":event["name"],"category":event["category"],"location":event["location_description"],"starts_at":event["starts_at"],"ends_at":event["ends_at"],"relationship":"ACTOR","relationship_status":participation_status,"current_phase":participation_status,"last_saved_at":request["participation_updated_at"] if request else event["updated_at"],"resume_target":target,"requested_assignment_count":request["requested_assignment_count"] if request else 0,"approved_roles":request["approved_roles"] if request else None,"approved_start":request["approved_start"] if request else None,"approved_end":request["approved_end"] if request else None,"published":True})
                 continue
-            phase = event["current_phase"] or "GOVERNANCE"
+            saved_phase = event["current_phase"] or "GOVERNANCE"
+            if saved_phase == "PUBLISHED":
+                phase = "PUBLISHED"
+            elif event["setup_saved"]:
+                phase = "READY"
+            elif event["stage_count"]:
+                if event["stages_without_work"]:
+                    phase = "WORK_DESIGN"
+                elif event["work_without_actor_requirements"]:
+                    phase = "ACTOR_REQUIREMENTS"
+                else:
+                    phase = "EVENT_SETUP"
+            else:
+                phase = saved_phase if saved_phase in ("GOVERNANCE", "STAGE_PLANNING") else "STAGE_PLANNING"
             stage_id = event["last_open_stage_id"]
-            if phase == "WORK_DESIGN" and stage_id is None:
+            if phase == "WORK_DESIGN":
                 with database.connect() as connection:
                     incomplete = connection.execute("""SELECT s.id FROM stages s WHERE s.event_id=%s AND NOT EXISTS(SELECT 1 FROM work_items w WHERE w.stage_id=s.id) ORDER BY s.stage_order LIMIT 1""", (event["id"],)).fetchone()
-                stage_id = incomplete["id"] if incomplete else None
+                if incomplete is not None:
+                    stage_id = incomplete["id"]
             routes={"GOVERNANCE":f"governance.html?event={event['id']}","STAGE_PLANNING":f"planning.html?event={event['id']}","WORK_DESIGN":f"stage.html?event={event['id']}&id={stage_id}" if stage_id else f"planning.html?event={event['id']}","ACTOR_REQUIREMENTS":f"actor-tree.html?event={event['id']}","EVENT_SETUP":f"event-setup.html?event={event['id']}","READY":f"event.html?event={event['id']}","PUBLISHED":f"event.html?event={event['id']}"}
             item={"event_id":event["id"],"event_name":event["name"],"category":event["category"],"location":event["location_description"],"starts_at":event["starts_at"],"ends_at":event["ends_at"],"relationship":event["role"],"relationship_status":event["relationship_status"],"current_phase":phase,"last_saved_at":event["resume_updated_at"] or event["updated_at"],"resume_target":routes.get(phase,routes["GOVERNANCE"]),"last_open_stage_id":stage_id,"governance_status":event["governance_status"],"stage_count":event["stage_count"],"work_count":event["work_count"],"actor_requirement_count":event["actor_requirement_count"],"event_setup_status":"SAVED" if event["setup_saved"] else "NOT_STARTED","published":phase=="PUBLISHED"}
             (organizing if event["role"]=="ORGANIZER" else participating).append(item)
@@ -455,6 +474,26 @@ def create_app(
             participating.append({"event_id":event["id"],"event_name":event["name"],"category":event["category"],"location":event["location_description"],"starts_at":event["starts_at"],"ends_at":event["ends_at"],"relationship":"REQUESTER","relationship_status":event["participation_status"],"current_phase":event["participation_status"],"last_saved_at":event["participation_updated_at"],"resume_target":target,"requested_assignment_count":event["requested_assignment_count"],"approved_roles":event["approved_roles"],"approved_start":event["approved_start"],"approved_end":event["approved_end"],"published":True})
         draft_items=[{"draft_id":row["id"],"event_name":row["name"],"current_phase":"CREATION_DRAFT","current_step":row["current_step"],"last_saved_at":row["updated_at"],"resume_target":f"create-event.html?draft={row['id']}"} for row in drafts]
         return {"organizing":draft_items+organizing,"participating":participating}
+
+    @app.get("/events/discover")
+    def discover_events(session: AuthenticatedSession = Depends(authenticated)):
+        with database.connect() as connection:
+            rows = connection.execute(
+                """SELECT e.id,e.name,e.category,e.purpose,e.starts_at,e.ends_at,
+                          e.location_description,es.event_visibility,
+                          ml.latitude,ml.longitude,
+                          (SELECT count(*) FROM participations p
+                           WHERE p.event_id=e.id AND p.status='ACCEPTED') AS participant_count
+                   FROM events e JOIN event_setups es ON es.event_id=e.id
+                   LEFT JOIN LATERAL (
+                     SELECT latitude,longitude FROM map_locations
+                     WHERE event_id=e.id AND entity_type='EVENT' AND visible=true
+                     ORDER BY updated_at DESC LIMIT 1
+                   ) ml ON true
+                   WHERE es.event_visibility='PUBLIC'
+                   ORDER BY e.starts_at,e.name,e.id"""
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     @app.post("/events", status_code=201)
     def create_event(
@@ -590,7 +629,7 @@ def create_app(
         )
         if work:
             mode = "CONFIRMED"
-        elif proposal is not None and proposal.status.value == "PENDING":
+        elif proposal is not None and proposal.status.value in ("PENDING", "STALE"):
             mode = "PROPOSAL"
         elif request is not None:
             mode = request["status"]

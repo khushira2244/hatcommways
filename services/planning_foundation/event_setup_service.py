@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5, NAMESPACE_URL
 
 from psycopg.types.json import Jsonb
 
@@ -57,10 +57,10 @@ class EventSetupService:
                     """
                     INSERT INTO event_setups (
                         event_id,initial_invites,sponsors_support,resource_needs,
-                        contribution_links,map_enabled,default_view,participation_dimensions,
+                        contribution_links,event_media,cover_image_data_url,map_enabled,default_view,event_latitude,event_longitude,map_area_label,participation_dimensions,
                         event_visibility,show_participant_counts,show_actor_tree,
                         show_sponsors,show_resources,show_payment_links
-                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     RETURNING *
                     """,
                     self._parameters(event_id, values),
@@ -70,7 +70,7 @@ class EventSetupService:
                     """
                     UPDATE event_setups SET
                         initial_invites=%s,sponsors_support=%s,resource_needs=%s,
-                        contribution_links=%s,map_enabled=%s,default_view=%s,
+                        contribution_links=%s,event_media=%s,cover_image_data_url=%s,map_enabled=%s,default_view=%s,event_latitude=%s,event_longitude=%s,map_area_label=%s,
                         participation_dimensions=%s,event_visibility=%s,
                         show_participant_counts=%s,show_actor_tree=%s,show_sponsors=%s,
                         show_resources=%s,show_payment_links=%s,
@@ -79,6 +79,18 @@ class EventSetupService:
                     """,
                     self._parameters(event_id, values)[1:] + (event_id,),
                 ).fetchone()
+            maps = values["map_settings"]
+            marker_id = uuid5(NAMESPACE_URL, f"hatcommways:event-map:{event_id}")
+            if maps.get("event_latitude") is not None:
+                connection.execute(
+                    """INSERT INTO map_locations(id,event_id,entity_type,entity_id,display_name,latitude,longitude,area_label,location_precision,status,visible,metadata)
+                       VALUES(%s,%s,'EVENT',%s,%s,%s,%s,%s,'ZONE','ACTIVE',%s,%s)
+                       ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name,latitude=excluded.latitude,longitude=excluded.longitude,
+                         area_label=excluded.area_label,visible=excluded.visible,updated_at=now()""",
+                    (marker_id,event_id,event_id,event["name"],maps["event_latitude"],maps["event_longitude"],maps.get("area_label") or event["location_description"],maps["map_enabled"],Jsonb({"source_label":"Organizer approximate event location"})),
+                )
+            elif not maps["map_enabled"]:
+                connection.execute("UPDATE map_locations SET visible=false,updated_at=now() WHERE id=%s",(marker_id,))
             snapshot = self._snapshot(event_id, row)
             correlation_id = uuid4()
             connection.execute(
@@ -116,7 +128,9 @@ class EventSetupService:
             Jsonb(values["sponsors_support"]),
             Jsonb(values["resources"]),
             Jsonb(values["contribution_links"]),
-            maps["map_enabled"], maps["default_view"], Jsonb(maps["participation_dimensions"]),
+            Jsonb(values["event_media"]),
+            values["cover_image_data_url"],
+            maps["map_enabled"], maps["default_view"], maps["event_latitude"], maps["event_longitude"], maps["area_label"], Jsonb(maps["participation_dimensions"]),
             privacy["event_visibility"], privacy["show_participant_counts"],
             privacy["show_actor_tree"], privacy["show_sponsors"],
             privacy["show_resources"], privacy["show_payment_links"],
@@ -133,10 +147,15 @@ class EventSetupService:
             sponsors_support=row["sponsors_support"],
             resources=row["resource_needs"],
             contribution_links=row["contribution_links"],
+            event_media=row.get("event_media") or [],
+            cover_image_data_url=row.get("cover_image_data_url"),
             map_settings={
                 "map_enabled": row["map_enabled"],
                 "default_view": row["default_view"],
                 "participation_dimensions": row["participation_dimensions"],
+                "event_latitude": row.get("event_latitude"),
+                "event_longitude": row.get("event_longitude"),
+                "area_label": row.get("map_area_label"),
             },
             privacy_settings={
                 "event_visibility": row["event_visibility"],

@@ -81,7 +81,16 @@ if (signupForm) {
           account_type: values.get("account_type"),
         }),
       });
-      window.location.assign(`./signin.html?created=1&email=${encodeURIComponent(values.get("email").trim())}`);
+      const session = await api("/auth/signin", {
+        method: "POST",
+        body: JSON.stringify({
+          email: values.get("email").trim(),
+          password: values.get("password"),
+        }),
+      });
+      storeToken(session.access_token);
+      await api("/auth/me");
+      window.location.assign("./app.html");
     } catch (error) {
       showMessage(message, error.message);
       button.disabled = false;
@@ -106,7 +115,7 @@ if (signinForm) {
       const session = await api("/auth/signin", { method: "POST", body: JSON.stringify({ email: values.get("email").trim(), password: values.get("password") }) });
       storeToken(session.access_token);
       await api("/auth/me");
-      window.location.assign("./my-events.html");
+      window.location.assign("./app.html");
     } catch (error) {
       clearToken();
       showMessage(message, error.message);
@@ -138,19 +147,26 @@ async function initializeApp() {
   }
 }
 
-const DISCOVERY_EVENTS = [
-  { id: "lake-cleanup", name: "Hyderabad Lake Cleanup", status: "Planning", date: "5 Sep 2026, Sat · 7:00 AM", location: "Necklace Road, Hyderabad", category: "Environment", people: 32, purpose: "Let's come together to clean our lakes and protect the environment.", x: 62, y: 32 },
-  { id: "reading-circle", name: "Community Reading Circle", status: "Upcoming", date: "8 Sep 2026, Tue · 4:30 PM", location: "Jubilee Hills, Hyderabad", category: "Education", people: 18, purpose: "Help children discover stories through a welcoming neighborhood reading circle.", x: 31, y: 46 },
-  { id: "health-camp", name: "Neighborhood Health Camp", status: "Confirmed", date: "12 Sep 2026, Sat · 9:00 AM", location: "Secunderabad", category: "Health", people: 24, purpose: "Connect residents with basic health checks and trusted local care resources.", x: 74, y: 19 },
-  { id: "food-share", name: "Weekend Food Share", status: "Planning", date: "13 Sep 2026, Sun · 10:00 AM", location: "Banjara Hills, Hyderabad", category: "Community", people: 41, purpose: "Coordinate a respectful community food collection and distribution effort.", x: 38, y: 68 },
-  { id: "arts-evening", name: "Open Arts Evening", status: "Upcoming", date: "18 Sep 2026, Fri · 6:00 PM", location: "Begumpet, Hyderabad", category: "Arts & Culture", people: 27, purpose: "Create a shared evening for local artists, families, and community stories.", x: 67, y: 72 },
-  { id: "skills-exchange", name: "Community Skills Exchange", status: "Planning", date: "20 Sep 2026, Sun · 11:00 AM", location: "Kukatpally, Hyderabad", category: "Other", people: 15, purpose: "Share practical skills and connect neighbors who can learn from one another.", x: 46, y: 22 },
-];
+let discoveryEvents = [];
+let discoveryMap = null;
+let discoveryMapEntries = [];
 
 const CATEGORY_ICONS = { All: "▦", Environment: "●", Education: "◆", Health: "♥", Community: "●", "Arts & Culture": "✣", Other: "•••" };
+const DEMO_DISCOVERY_CENTER = Object.freeze({ lat: 23.356542, lng: 85.340022 });
+const DISCOVERY_MARKER_STYLES = {
+  Environment: { background: "#159a5b", glyph: "●" },
+  Animals: { background: "#8b5e3c", glyph: "◆" },
+  "Animal Welfare": { background: "#8b5e3c", glyph: "◆" },
+  Health: { background: "#e05252", glyph: "♥" },
+  Community: { background: "#2f7de1", glyph: "●" },
+  Education: { background: "#e58a16", glyph: "◆" },
+  "Arts & Culture": { background: "#8051c9", glyph: "✣" },
+  Other: { background: "#65748a", glyph: "●" },
+};
+const discoveryEsc = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
 let activeCategory = "All";
 
-function initializeDiscovery() {
+async function initializeDiscovery() {
   const markerHost = document.querySelector("#event-markers");
   if (!markerHost) return;
   const chipHost = document.querySelector("#category-chips");
@@ -165,8 +181,21 @@ function initializeDiscovery() {
   });
   document.querySelector("#category-select").addEventListener("change", (event) => setCategory(event.target.value));
   document.querySelector("#event-search").addEventListener("input", renderMarkers);
-  renderMarkers();
+  document.querySelector('.action-card--join')?.addEventListener('click',event=>{event.preventDefault();document.querySelector('#discovery').scrollIntoView({behavior:'smooth',block:'start'});setTimeout(()=>document.querySelector('#event-search').focus(),350)});
+  try {
+    const rows = await api('/events/discover');
+    discoveryEvents = rows.map(item => ({...item,category:item.category||'Other',status:new Date(item.starts_at)>new Date()?'Upcoming':'Open',date:new Date(item.starts_at).toLocaleString([],{dateStyle:'medium',timeStyle:'short'}),location:item.location_description,people:item.participant_count}));
+    renderMarkers();
+    await initializeDiscoveryMap();
+  } catch (error) {
+    markerHost.innerHTML = `<p class="discovery-error">${String(error.message||error)}</p>`;
+  }
 }
+
+function browserLocation(){return new Promise(resolve=>{if(!navigator.geolocation){resolve(null);return}navigator.geolocation.getCurrentPosition(position=>resolve({lat:position.coords.latitude,lng:position.coords.longitude}),()=>resolve(null),{enableHighAccuracy:false,timeout:5000,maximumAge:300000})})}
+async function geocodeEvent(maps,event){if(event.latitude!=null&&event.longitude!=null)return{lat:event.latitude,lng:event.longitude};try{const result=await new maps.Geocoder().geocode({address:event.location_description});const location=result.results[0]?.geometry?.location;return location?{lat:location.lat(),lng:location.lng()}:null}catch{return null}}
+function discoveryMarkerStyle(category){return DISCOVERY_MARKER_STYLES[category]||DISCOVERY_MARKER_STYLES.Other}
+async function initializeDiscoveryMap(){const host=document.querySelector('#discovery-google-map');const status=document.querySelector('#discovery-map-status');try{const maps=await HatcommwaysEventMap.loadGoogleMaps();const markerLibrary=await maps.importLibrary('marker');const current=await browserLocation();discoveryMap=new maps.Map(host,{center:current||DEMO_DISCOVERY_CENTER,zoom:current?12:11,mapId:HatcommwaysEventMap.getMapId(),mapTypeControl:false,streetViewControl:false});document.querySelector('#map-canvas').classList.add('has-google-map');const entries=[];for(const event of discoveryEvents){const position=await geocodeEvent(maps,event);if(!position)continue;const style=discoveryMarkerStyle(event.category);const pin=new markerLibrary.PinElement({background:style.background,borderColor:'#fff',glyphColor:'#fff',glyph:style.glyph});const marker=new markerLibrary.AdvancedMarkerElement({map:discoveryMap,position,title:event.name,content:pin.element});marker.addListener('click',()=>showEventPreview(event));entries.push({event,marker,position})}discoveryMapEntries=entries;status.textContent=current?'Map centered near your current location.':'Using the demo fallback area near Ranchi.';renderMarkers()}catch(error){status.textContent='Interactive map unavailable. Search and event results still work.';host.hidden=true}}
 
 function setCategory(category) {
   activeCategory = category;
@@ -179,23 +208,25 @@ function renderMarkers() {
   const markerHost = document.querySelector("#event-markers");
   const term = document.querySelector("#event-search").value.trim().toLowerCase();
   markerHost.replaceChildren();
-  const matches = DISCOVERY_EVENTS.filter((item) => (activeCategory === "All" || item.category === activeCategory) && (!term || `${item.name} ${item.location} ${item.category}`.toLowerCase().includes(term)));
+  const matches = discoveryEvents.filter((item) => (activeCategory === "All" || item.category === activeCategory) && (!term || `${item.name} ${item.location} ${item.category}`.toLowerCase().includes(term)));
+  discoveryMapEntries.forEach(entry=>{entry.marker.map=matches.includes(entry.event)?discoveryMap:null});
+  if(!matches.length){markerHost.innerHTML='<p class="no-events-found">No events found</p>';document.querySelector('#event-preview').hidden=true;return}
+  if(discoveryMap){if(term){const selected=discoveryMapEntries.find(entry=>entry.event===matches[0]);if(selected){discoveryMap.panTo(selected.position);discoveryMap.setZoom(14)}showEventPreview(matches[0])}return}
   matches.forEach((item) => {
     const marker = document.createElement("button");
     marker.type = "button";
-    marker.className = `event-marker marker-${item.category.toLowerCase().replace(/[^a-z]+/g, "-")}`;
-    marker.style.left = `${item.x}%`; marker.style.top = `${item.y}%`;
+    marker.className = 'discovery-result-button';
     marker.setAttribute("aria-label", `Preview ${item.name}`);
-    marker.innerHTML = `<span>${CATEGORY_ICONS[item.category]}</span>`;
+    marker.innerHTML = `<strong>${discoveryEsc(item.name)}</strong><small>${discoveryEsc(item.location)}</small>`;
     marker.addEventListener("click", () => showEventPreview(item));
     markerHost.append(marker);
   });
-  if (!matches.length) document.querySelector("#event-preview").hidden = true;
+  if(term)showEventPreview(matches[0]);
 }
 
 function showEventPreview(item) {
   const preview = document.querySelector("#event-preview");
-  preview.innerHTML = `<button class="preview-close" type="button" aria-label="Close preview">×</button><span class="preview-status">${item.status}</span><h3>${item.name}</h3><dl><div><dt>Date</dt><dd>${item.date}</dd></div><div><dt>Location</dt><dd>${item.location}</dd></div><div><dt>Category</dt><dd>${item.category}</dd></div><div><dt>People</dt><dd>${item.people} people involved</dd></div></dl><p>${item.purpose}</p><a class="button button--primary" href="./event.html?id=${encodeURIComponent(item.id)}">View Event</a>`;
+  preview.innerHTML = `<button class="preview-close" type="button" aria-label="Close preview">×</button><span class="preview-status">${discoveryEsc(item.status)}</span><h3>${discoveryEsc(item.name)}</h3><dl><div><dt>Date</dt><dd>${discoveryEsc(item.date)}</dd></div><div><dt>Location</dt><dd>${discoveryEsc(item.location)}</dd></div><div><dt>Category</dt><dd>${discoveryEsc(item.category||'Uncategorized')}</dd></div><div><dt>People</dt><dd>${discoveryEsc(item.people)} participating</dd></div></dl><p>${discoveryEsc(item.purpose)}</p><a class="button button--primary" href="./event.html?event=${encodeURIComponent(item.id)}">View Event</a>`;
   preview.hidden = false;
   preview.querySelector(".preview-close").addEventListener("click", () => { preview.hidden = true; });
 }

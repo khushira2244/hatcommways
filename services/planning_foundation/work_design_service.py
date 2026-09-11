@@ -248,7 +248,7 @@ class WorkDesignService:
                     stage_version=(existing["application_result"] or {}).get("stage_version"),
                     duplicate=True,
                 )
-            if proposal["status"] != ProposalStatus.PENDING:
+            if proposal["status"] not in (ProposalStatus.PENDING, ProposalStatus.STALE):
                 raise ProposalAlreadyDecidedError("proposal is not pending")
 
             if command.decision == ProposalDecision.REJECT:
@@ -277,7 +277,10 @@ class WorkDesignService:
                 )
 
             expected = proposal["base_versions"]
-            if event["version"] != expected["event"] or stage["version"] != expected["stage"]:
+            if stage["version"] != expected["stage"] or (
+                proposal["status"] == ProposalStatus.PENDING
+                and event["version"] != expected["event"]
+            ):
                 connection.execute(
                     "UPDATE proposals SET status = 'STALE', decided_at = now() WHERE id = %s",
                     (command.proposal_id,),
@@ -315,6 +318,7 @@ class WorkDesignService:
                 EventSnapshot.model_validate(event),
                 self._stage_snapshot(stage),
                 expected_proposal_id=command.proposal_id,
+                require_event_version=proposal["status"] == ProposalStatus.PENDING,
             )
             work_ids = {
                 item.temporary_work_ref: uuid4() for item in work_plan.proposed_work
@@ -358,6 +362,21 @@ class WorkDesignService:
                 """,
                 (event["id"],),
             ).fetchone()
+            connection.execute(
+                """
+                UPDATE proposals p
+                SET base_versions = jsonb_set(p.base_versions, '{event}', to_jsonb(%s::integer)),
+                    payload = jsonb_set(p.payload, '{base_event_version}', to_jsonb(%s::integer))
+                FROM stages sibling
+                WHERE p.target_id = sibling.id
+                  AND sibling.event_id = %s
+                  AND sibling.id <> %s
+                  AND p.proposal_type = 'WORK_DECOMPOSITION'
+                  AND p.status = 'PENDING'
+                  AND (p.base_versions->>'event')::integer = %s
+                """,
+                (updated_event["version"], updated_event["version"], event["id"], stage["id"], event["version"]),
+            )
             connection.execute(
                 """
                 UPDATE proposals SET status = 'APPROVED', payload = %s, decided_at = now()

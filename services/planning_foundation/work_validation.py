@@ -68,6 +68,7 @@ class WorkDecompositionValidator:
         stage: StageSnapshot,
         *,
         expected_proposal_id: UUID | None = None,
+        require_event_version: bool = True,
     ) -> WorkDecompositionProposal:
         if expected_proposal_id is not None and proposal.proposal_id != expected_proposal_id:
             raise ValidationError("proposal_id does not match the requested proposal")
@@ -75,7 +76,7 @@ class WorkDecompositionValidator:
             raise ValidationError("work proposal must target exactly the scoped stage")
         if stage.event_id != event.id:
             raise ValidationError("target stage does not belong to the event")
-        if proposal.base_event_version != event.version:
+        if require_event_version and proposal.base_event_version != event.version:
             raise ValidationError("proposal base event version is not current")
         if proposal.base_stage_version != stage.version:
             raise ValidationError("proposal base stage version is not current")
@@ -126,12 +127,14 @@ class WorkDecompositionValidator:
         stage: StageSnapshot,
         *,
         expected_proposal_id: UUID | None = None,
+        require_event_version: bool = True,
     ) -> WorkDecompositionProposal:
         return self.validate(
             self.parse(payload),
             event,
             stage,
             expected_proposal_id=expected_proposal_id,
+            require_event_version=require_event_version,
         )
 
     @staticmethod

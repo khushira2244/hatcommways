@@ -18,32 +18,39 @@
   </head>
   <body>
     <div class="page-shell">
-      <header class="site-header" aria-label="Primary navigation">
+      <header class="site-header public-header" aria-label="Primary navigation">
         <a class="brand" href="./index.html" aria-label="Hatcommways home">
           <img class="brand-logo" src="./hatcommways-logo.png" alt="Hatcommways" />
         </a>
 
-        <a class="header-link" href="./signin.html">Sign in</a>
+        <nav class="public-nav" aria-label="Public navigation">
+          <a href="#how-it-works">How It Works</a>
+          <a href="#features">Features</a>
+          <a href="#communities">For Communities</a>
+          <a href="#about">About Us</a>
+        </nav>
+        <div class="public-account-actions">
+          <a class="header-link" href="./signin.html">Sign In</a>
+          <a class="button button--primary button--small" href="./signup.html">Sign Up</a>
+        </div>
       </header>
 
       <main>
-        <section class="hero" aria-labelledby="hero-title">
+        <section class="hero reference-hero" aria-labelledby="hero-title">
           <div class="hero__content">
-            <p class="eyebrow"><span aria-hidden="true"></span> Community action, coordinated</p>
-            <h1 id="hero-title">Coordinate community action <em>without the chaos.</em></h1>
+            <h1 id="hero-title">Plan. Engage. Execute. <em>Together.</em></h1>
             <p class="hero__summary">
-              Hatcommways helps organizers, participants, and supporters plan events,
-              manage stages of work, and stay aligned as things change.
+              Hatcommways is an AI-powered community execution platform that helps organizers
+              plan events, coordinate people, and get things done efficiently and transparently.
             </p>
 
             <div class="hero__actions" id="signup">
               <a class="button button--primary" href="./signup.html">
-                Sign up
+                Get Started
                 <svg viewBox="0 0 20 20" aria-hidden="true">
                   <path d="m7 4 6 6-6 6" />
                 </svg>
               </a>
-              <a class="button button--secondary" href="#events-preview">Explore events</a>
             </div>
 
             <p class="hero__note">
@@ -51,7 +58,7 @@
                 <path d="M10 2.5 16 5v4.6c0 3.7-2.5 6.3-6 7.9-3.5-1.6-6-4.2-6-7.9V5l6-2.5Z" />
                 <path d="m7.5 10 1.6 1.7 3.5-3.8" />
               </svg>
-              Built for people doing meaningful work together.
+              Free to start. No credit card required.
             </p>
           </div>
 
