@@ -423,6 +423,36 @@ CREATE INDEX IF NOT EXISTS domain_outbox_unpublished_idx
     ON domain_outbox (occurred_at)
     WHERE published_at IS NULL;
 
+CREATE TABLE IF NOT EXISTS runtime_agent_runs (
+    id uuid PRIMARY KEY,
+    message_id uuid NOT NULL,
+    event_type varchar(200) NOT NULL,
+    handler_name varchar(200) NOT NULL,
+    status varchar(20) NOT NULL CHECK (status IN (
+        'PENDING','RUNNING','SUCCEEDED','FAILED','RETRYABLE','DEAD_LETTERED'
+    )),
+    attempt integer NOT NULL DEFAULT 1 CHECK (attempt > 0),
+    max_attempts integer NOT NULL DEFAULT 3 CHECK (max_attempts > 0),
+    policy_reference varchar(100) NOT NULL,
+    started_at timestamptz,
+    completed_at timestamptz,
+    correlation_id uuid NOT NULL,
+    causation_id uuid,
+    idempotency_key varchar(300) NOT NULL,
+    input_fingerprint char(64) NOT NULL,
+    output_reference jsonb,
+    last_error_code varchar(100),
+    last_error_message varchar(1000),
+    next_retry_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (message_id, handler_name),
+    CHECK (output_reference IS NULL OR jsonb_typeof(output_reference) = 'object')
+);
+
+CREATE INDEX IF NOT EXISTS runtime_agent_runs_status_idx
+    ON runtime_agent_runs (status, next_retry_at, updated_at);
+
 CREATE TABLE IF NOT EXISTS governance_assessments (
     id uuid PRIMARY KEY,
     event_id uuid NOT NULL UNIQUE REFERENCES events(id) ON DELETE CASCADE,
