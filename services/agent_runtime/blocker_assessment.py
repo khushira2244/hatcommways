@@ -50,7 +50,7 @@ class StrandsBlockerAssessmentAgent:
         self, *, event_id: UUID, update_id: UUID, organizer_id: UUID
     ) -> BlockerAssessmentAgentResult:
         session = boto3.Session(
-            profile_name=os.environ.get("AWS_PROFILE", "hatcommways"), region_name=REGION
+            profile_name=os.environ.get("AWS_PROFILE"), region_name=REGION
         )
         model = BedrockModel(
             boto_session=session,

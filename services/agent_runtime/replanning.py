@@ -17,7 +17,7 @@ class StrandsReplanningAgent:
   @tool(name='get_selective_replan_context',description='Return only affected plan scope and frozen unaffected work IDs.')
   def context():
    nonlocal calls;calls+=1;return self.service.context(event_id,blocker_id,organizer_id).model_dump(mode='json')
-  model=BedrockModel(boto_session=boto3.Session(profile_name=os.environ.get('AWS_PROFILE','hatcommways'),region_name='us-east-1'),model_id=MODEL_ID,temperature=0,max_tokens=2600)
+  model=BedrockModel(boto_session=boto3.Session(profile_name=os.environ.get('AWS_PROFILE'),region_name='us-east-1'),model_id=MODEL_ID,temperature=0,max_tokens=2600)
   agent=Agent(name=AGENT_NAME,model=model,tools=[context],structured_output_model=ReplanDecision,callback_handler=None,system_prompt='Call the scoped tool exactly once. Propose the smallest safe timing changes only for affected IDs. Never change unrelated work, apply changes, clear blockers, alter dependencies, assign actors, or self-approve. Return only typed output.')
   result=agent(f'Propose a selective replan for blocker {blocker_id} in event {event_id}.')
   if calls!=1 or result.structured_output is None:raise RuntimeError('replanning scoped tool contract failed')

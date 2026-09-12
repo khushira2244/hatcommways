@@ -281,6 +281,12 @@ def create_app(
     )
     bearer = HTTPBearer(auto_error=False)
 
+    @app.get("/health", tags=["system"])
+    def health():
+        with database.connect() as connection:
+            connection.execute("SELECT 1").fetchone()
+        return {"status": "ok"}
+
     @app.exception_handler(DuplicateEmailError)
     async def duplicate_email_handler(_request, error):
         return _error_response(409, str(error))

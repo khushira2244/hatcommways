@@ -65,7 +65,7 @@ class StrandsActorRequirementAgent:
         base_work_version: int,
         proposal_id: UUID,
     ) -> ActorRequirementAgentResult:
-        profile = os.environ.get("AWS_PROFILE", "hatcommways")
+        profile = os.environ.get("AWS_PROFILE")
         session = boto3.Session(profile_name=profile, region_name=REGION)
         model = BedrockModel(
             boto_session=session,
@@ -183,4 +183,3 @@ class ActorRequirementWorkflow:
         except Exception as error:
             self.service.fail_request(request_id, type(error).__name__)
             raise
-

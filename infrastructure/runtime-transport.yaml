@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Hatcommways runtime EventBridge to SQS transport
+
+Resources:
+  RuntimeEventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: hatcommways-runtime-events
+
+  RuntimeDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: hatcommways-runtime-dlq
+      MessageRetentionPeriod: 1209600
+
+  RuntimeQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: hatcommways-runtime-queue
+      ReceiveMessageWaitTimeSeconds: 20
+      VisibilityTimeout: 10
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt RuntimeDeadLetterQueue.Arn
+        maxReceiveCount: 3
+
+  RuntimeRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: hatcommways-runtime
+      EventBusName: !Ref RuntimeEventBus
+      EventPattern:
+        source:
+          - hatcommways.runtime
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt RuntimeQueue.Arn
+          Id: runtime-queue
+
+  RuntimeQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref RuntimeQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowEventBridgeRuntimeRule
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt RuntimeQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt RuntimeRule.Arn
+
+Outputs:
+  EventBusName:
+    Value: !Ref RuntimeEventBus
+  EventBusArn:
+    Value: !GetAtt RuntimeEventBus.Arn
+  RuntimeRuleArn:
+    Value: !GetAtt RuntimeRule.Arn
+  RuntimeQueueUrl:
+    Value: !Ref RuntimeQueue
+  RuntimeQueueArn:
+    Value: !GetAtt RuntimeQueue.Arn
+  RuntimeDeadLetterQueueUrl:
+    Value: !Ref RuntimeDeadLetterQueue
+  RuntimeDeadLetterQueueArn:
+    Value: !GetAtt RuntimeDeadLetterQueue.Arn

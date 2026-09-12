@@ -1,0 +1,384 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Minimal Hatcommways PostgreSQL, ECS/Fargate API, and runtime worker
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PublicSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+  RuntimeEventBusName:
+    Type: String
+  RuntimeEventBusArn:
+    Type: String
+  RuntimeQueueUrl:
+    Type: String
+  RuntimeQueueArn:
+    Type: String
+  RuntimeDeadLetterQueueUrl:
+    Type: String
+  ImageUri:
+    Type: String
+    Default: ''
+  DesiredCount:
+    Type: Number
+    Default: 0
+  FailureProofMessageId:
+    Type: String
+    Default: ''
+
+Conditions:
+  DeployServices: !Not [!Equals [!Ref ImageUri, '']]
+
+Resources:
+  ContainerRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: hatcommways
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: MUTABLE
+
+  DatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: hatcommways/production/database
+      Description: Hatcommways production PostgreSQL connection
+      GenerateSecretString:
+        SecretStringTemplate: '{"username":"hatcommways_admin"}'
+        GenerateStringKey: password
+        PasswordLength: 32
+        ExcludePunctuation: true
+
+  ApplicationSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Hatcommways ECS tasks
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public Hatcommways API load balancer
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+
+  ApplicationIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ApplicationSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8000
+      ToPort: 8000
+      SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: PostgreSQL from Hatcommways ECS tasks only
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref ApplicationSecurityGroup
+
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Hatcommways public subnets
+      SubnetIds: !Ref PublicSubnetIds
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      DBInstanceIdentifier: hatcommways-production
+      Engine: postgres
+      DBInstanceClass: db.t4g.micro
+      AllocatedStorage: 20
+      StorageType: gp3
+      DBName: hatcommways
+      MasterUsername: !Sub '{{resolve:secretsmanager:${DatabaseSecret}:SecretString:username}}'
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:${DatabaseSecret}:SecretString:password}}'
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      VPCSecurityGroups:
+        - !Ref DatabaseSecurityGroup
+      PubliclyAccessible: true
+      MultiAZ: false
+      BackupRetentionPeriod: 0
+      DeleteAutomatedBackups: true
+      DeletionProtection: false
+      AutoMinorVersionUpgrade: true
+      EnablePerformanceInsights: false
+
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: hatcommways
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/ecs/hatcommways-api
+      RetentionInDays: 7
+
+  WorkerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/ecs/hatcommways-worker
+      RetentionInDays: 7
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: hatcommways-ecs-execution
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ReadDatabaseSecret
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref DatabaseSecret
+
+  ApplicationTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: hatcommways-application-task
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: RuntimeTransportAndNova
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: PublishRuntimeEvents
+                Effect: Allow
+                Action: events:PutEvents
+                Resource: !Ref RuntimeEventBusArn
+              - Sid: ConsumeRuntimeQueue
+                Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:ChangeMessageVisibility
+                  - sqs:GetQueueAttributes
+                Resource: !Ref RuntimeQueueArn
+              - Sid: InvokeNova
+                Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource:
+                  - !Sub arn:${AWS::Partition}:bedrock:*::foundation-model/amazon.nova-2-lite-v1:0
+                  - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.amazon.nova-2-lite-v1:0
+              - Sid: EmitAgentTelemetry
+                Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                  - xray:GetSamplingRules
+                  - xray:GetSamplingTargets
+                  - xray:GetSamplingStatisticSummaries
+                  - cloudwatch:PutMetricData
+                Resource: '*'
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: hatcommways-api
+      Scheme: internet-facing
+      Type: application
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      Subnets: !Ref PublicSubnetIds
+
+  ApiTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: hatcommways-api
+      VpcId: !Ref VpcId
+      Protocol: HTTP
+      Port: 8000
+      TargetType: ip
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ApiTargetGroup
+
+  ApiTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Condition: DeployServices
+    Properties:
+      Family: hatcommways-api
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: '256'
+      Memory: '512'
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ApplicationTaskRole.Arn
+      ContainerDefinitions:
+        - Name: api
+          Image: !Ref ImageUri
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8000
+              Protocol: tcp
+          Command: [python, -m, uvicorn, services.api.main:app, --host, 0.0.0.0, --port, '8000']
+          Secrets:
+            - Name: HATCOMMWAYS_DATABASE_URL
+              ValueFrom: !Sub '${DatabaseSecret}:database_url::'
+          Environment:
+            - Name: HATCOMMWAYS_AWS_REGION
+              Value: !Ref AWS::Region
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ApiLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: api
+
+  WorkerTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Condition: DeployServices
+    Properties:
+      Family: hatcommways-worker
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ApplicationTaskRole.Arn
+      ContainerDefinitions:
+        - Name: worker
+          Image: !Ref ImageUri
+          Essential: true
+          Command: [opentelemetry-instrument, python, -m, services.agent_runtime.sqs_worker]
+          Secrets:
+            - Name: HATCOMMWAYS_DATABASE_URL
+              ValueFrom: !Sub '${DatabaseSecret}:database_url::'
+          Environment:
+            - Name: HATCOMMWAYS_AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: HATCOMMWAYS_EVENT_BUS_NAME
+              Value: !Ref RuntimeEventBusName
+            - Name: HATCOMMWAYS_RUNTIME_QUEUE_URL
+              Value: !Ref RuntimeQueueUrl
+            - Name: HATCOMMWAYS_RUNTIME_DLQ_URL
+              Value: !Ref RuntimeDeadLetterQueueUrl
+            - Name: AGENT_OBSERVABILITY_ENABLED
+              Value: 'true'
+            - Name: OTEL_PYTHON_DISTRO
+              Value: aws_distro
+            - Name: OTEL_PYTHON_CONFIGURATOR
+              Value: aws_configurator
+            - Name: OTEL_EXPORTER_OTLP_PROTOCOL
+              Value: http/protobuf
+            - Name: OTEL_RESOURCE_ATTRIBUTES
+              Value: service.name=hatcommways-coordination-agent
+            - Name: OTEL_AWS_APPLICATION_SIGNALS_ENABLED
+              Value: 'false'
+            - Name: OTEL_METRICS_EXPORTER
+              Value: awsemf
+            - Name: OTEL_LOGS_EXPORTER
+              Value: none
+            - Name: HATCOMMWAYS_RUNTIME_FAILURE_PROOF_MESSAGE_ID
+              Value: !Ref FailureProofMessageId
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref WorkerLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: worker
+
+  ApiService:
+    Type: AWS::ECS::Service
+    Condition: DeployServices
+    DependsOn: HttpListener
+    Properties:
+      ServiceName: hatcommways-api
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref ApiTaskDefinition
+      DesiredCount: !Ref DesiredCount
+      LaunchType: FARGATE
+      HealthCheckGracePeriodSeconds: 120
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups: [!Ref ApplicationSecurityGroup]
+          Subnets: !Ref PublicSubnetIds
+      LoadBalancers:
+        - ContainerName: api
+          ContainerPort: 8000
+          TargetGroupArn: !Ref ApiTargetGroup
+
+  WorkerService:
+    Type: AWS::ECS::Service
+    Condition: DeployServices
+    Properties:
+      ServiceName: hatcommways-worker
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref WorkerTaskDefinition
+      DesiredCount: !Ref DesiredCount
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups: [!Ref ApplicationSecurityGroup]
+          Subnets: !Ref PublicSubnetIds
+
+Outputs:
+  EcrRepositoryUri:
+    Value: !GetAtt ContainerRepository.RepositoryUri
+  DatabaseEndpoint:
+    Value: !GetAtt Database.Endpoint.Address
+  DatabaseSecretArn:
+    Value: !Ref DatabaseSecret
+  ClusterName:
+    Value: !Ref Cluster
+  ApiServiceName:
+    Condition: DeployServices
+    Value: !GetAtt ApiService.Name
+  WorkerServiceName:
+    Condition: DeployServices
+    Value: !GetAtt WorkerService.Name
+  ApiEndpoint:
+    Value: !Sub http://${LoadBalancer.DNSName}

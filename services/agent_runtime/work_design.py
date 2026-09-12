@@ -61,7 +61,7 @@ class StrandsWorkDesignAgent:
         base_stage_version: int,
         proposal_id: UUID,
     ) -> WorkDesignAgentResult:
-        profile = os.environ.get("AWS_PROFILE", "hatcommways")
+        profile = os.environ.get("AWS_PROFILE")
         session = boto3.Session(profile_name=profile, region_name=REGION)
         model = BedrockModel(
             boto_session=session,

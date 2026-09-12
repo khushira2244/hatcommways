@@ -1,0 +1,13 @@
+.git
+.venv
+.pytest_cache
+.pytest-*
+.local-aws
+apps
+docs
+outputs
+tests
+var
+work
+**/__pycache__
+*.pyc

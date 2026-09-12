@@ -93,7 +93,7 @@ class StrandsCoordinationAgent:
         self.service = service
 
     def generate(self, *, event_id: UUID, blocker_id: UUID, organizer_id: UUID) -> CoordinationAgentResult:
-        session = boto3.Session(profile_name=os.environ.get("AWS_PROFILE", "hatcommways"), region_name=REGION)
+        session = boto3.Session(profile_name=os.environ.get("AWS_PROFILE"), region_name=REGION)
         model = BedrockModel(boto_session=session, model_id=MODEL_ID, temperature=0, max_tokens=2200)
         calls = 0
 

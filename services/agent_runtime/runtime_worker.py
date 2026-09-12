@@ -60,6 +60,7 @@ class RuntimeConsumptionResult:
     attempt: int
     reused: bool
     output_reference: dict[str, Any] | None = None
+    retryable_failure: bool = False
 
 
 class RuntimeRouter:
@@ -145,7 +146,8 @@ class PostgresRuntimeRunRegistry:
                    WHERE id=%s RETURNING *""",
                 (status.value, type(error).__name__[:100], str(error)[:1000], run_id),
             ).fetchone()
-            return self._result(row, reused=False)
+            result = self._result(row, reused=False)
+            return RuntimeConsumptionResult(**{**result.__dict__, "retryable_failure": retryable})
 
 
 class InMemoryRuntimeRunRegistry:
@@ -180,7 +182,10 @@ class InMemoryRuntimeRunRegistry:
     def fail(self, run_id: UUID, error: Exception, *, retryable: bool) -> RuntimeConsumptionResult:
         row = next(row for row in self.rows.values() if row["id"] == run_id)
         row["status"] = RuntimeRunStatus.RETRYABLE if retryable and row["attempt"] < row["max_attempts"] else RuntimeRunStatus.FAILED
-        return RuntimeConsumptionResult(run_id, row["status"], row["handler"], row["attempt"], False)
+        return RuntimeConsumptionResult(
+            run_id, row["status"], row["handler"], row["attempt"], False,
+            retryable_failure=retryable,
+        )
 
 
 def input_fingerprint(event: RuntimeEventEnvelope, handler_name: str) -> str:

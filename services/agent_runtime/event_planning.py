@@ -54,7 +54,7 @@ class StrandsEventPlanningAgent:
         base_event_version: int,
         proposal_id: UUID,
     ) -> EventPlanningAgentResult:
-        profile = os.environ.get("AWS_PROFILE", "hatcommways")
+        profile = os.environ.get("AWS_PROFILE")
         session = boto3.Session(profile_name=profile, region_name=REGION)
         model = BedrockModel(
             boto_session=session,
