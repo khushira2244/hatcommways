@@ -81,21 +81,92 @@ class ReplanningService:
     def get(self,event_id,blocker_id,organizer_id):
         with self.database.connect() as c:
             event=self.human._event(c,event_id,organizer_id);self.human._require_organizer(c,event,organizer_id);row=c.execute('SELECT * FROM replan_proposals WHERE event_id=%s AND blocker_id=%s',(event_id,blocker_id)).fetchone();return self._proposal(row) if row else None
+    @staticmethod
+    def _display_window(start, end):
+        def clock(value):
+            return value.strftime('%I:%M %p').lstrip('0')
+        return f'{clock(start)} – {clock(end)}'
+
     def decide(self,event_id,blocker_id,proposal_id,organizer_id,expected_event_version,approve):
         with self.database.connect() as c:
-            event=self.human._event(c,event_id,organizer_id,write=True);self.human._require_organizer(c,event,organizer_id);blocker=c.execute('SELECT * FROM blockers WHERE id=%s AND event_id=%s FOR UPDATE',(blocker_id,event_id)).fetchone();row=c.execute('SELECT * FROM replan_proposals WHERE id=%s AND blocker_id=%s AND event_id=%s FOR UPDATE',(proposal_id,blocker_id,event_id)).fetchone()
+            event=self.human._event(c,event_id,organizer_id,write=True)
+            self.human._require_organizer(c,event,organizer_id)
+            blocker=c.execute('SELECT * FROM blockers WHERE id=%s AND event_id=%s FOR UPDATE',(blocker_id,event_id)).fetchone()
+            row=c.execute('SELECT * FROM replan_proposals WHERE id=%s AND blocker_id=%s AND event_id=%s FOR UPDATE',(proposal_id,blocker_id,event_id)).fetchone()
             if not blocker or not row: raise NotFoundError('replan proposal not found')
             if row['status']!='PROPOSED': raise ProposalAlreadyDecidedError('replan proposal already decided')
             if event['version']!=expected_event_version or event['version']!=row['current_plan_version']:
-                c.execute("UPDATE replan_proposals SET status='STALE',decided_at=now() WHERE id=%s",(proposal_id,));c.execute("UPDATE replan_requests SET status='STALE',updated_at=now() WHERE id=%s",(row['request_id'],));raise StaleVersionError('replan proposal is stale')
+                c.execute("UPDATE replan_proposals SET status='STALE',decided_at=now() WHERE id=%s",(proposal_id,))
+                c.execute("UPDATE replan_requests SET status='STALE',updated_at=now() WHERE id=%s",(row['request_id'],))
+                raise StaleVersionError('replan proposal is stale')
             if not approve:
-                row=c.execute("UPDATE replan_proposals SET status='REJECTED',decided_at=now() WHERE id=%s RETURNING *",(proposal_id,)).fetchone();c.execute("UPDATE replan_requests SET status='REJECTED',updated_at=now() WHERE id=%s",(row['request_id'],));return self._proposal(row)
-            x=self._context(c,event,blocker);self.validate(ReplanDecision.model_validate({k:row[k] for k in ReplanDecision.model_fields}),x);before=[]
+                row=c.execute("UPDATE replan_proposals SET status='REJECTED',decided_at=now() WHERE id=%s RETURNING *",(proposal_id,)).fetchone()
+                c.execute("UPDATE replan_requests SET status='REJECTED',updated_at=now() WHERE id=%s",(row['request_id'],))
+                return self._proposal(row)
+
+            x=self._context(c,event,blocker)
+            self.validate(ReplanDecision.model_validate({k:row[k] for k in ReplanDecision.model_fields}),x)
+            before=[]
+            actor_messages={}
             for ch in row['proposed_changes']:
                 if ch.get('proposed_start') and ch.get('target_work_id'):
-                    old=c.execute('SELECT * FROM work_items WHERE id=%s FOR UPDATE',(ch['target_work_id'],)).fetchone();before.append(dict(old));c.execute('UPDATE work_items SET starts_at=%s,ends_at=%s,version=version+1,updated_at=now() WHERE id=%s',(ch['proposed_start'],ch['proposed_end'],ch['target_work_id']))
+                    old=c.execute('SELECT * FROM work_items WHERE id=%s FOR UPDATE',(ch['target_work_id'],)).fetchone()
+                    before.append(dict(old))
+                    participations=c.execute(
+                        """SELECT id,account_id FROM participations
+                           WHERE event_id=%s AND work_id=%s AND status='ACCEPTED' FOR UPDATE""",
+                        (event_id,ch['target_work_id']),
+                    ).fetchall()
+                    c.execute('UPDATE work_items SET starts_at=%s,ends_at=%s,version=version+1,updated_at=now() WHERE id=%s',(ch['proposed_start'],ch['proposed_end'],ch['target_work_id']))
+                    if participations:
+                        c.execute(
+                            """UPDATE participations SET approved_start=%s,approved_end=%s,updated_at=now()
+                               WHERE event_id=%s AND work_id=%s AND status='ACCEPTED'""",
+                            (ch['proposed_start'],ch['proposed_end'],event_id,ch['target_work_id']),
+                        )
+                    detail=(
+                        f"{old['canonical_name']}\n"
+                        f"Previous: {self._display_window(old['starts_at'],old['ends_at'])}\n"
+                        f"Updated: {self._display_window(ch['proposed_start'],ch['proposed_end'])}\n"
+                        "Reason: Event coordination adjustment."
+                    )
+                    for participation in participations:
+                        actor_messages.setdefault(participation['account_id'],[]).append(detail)
                 elif ch.get('proposed_start') and ch.get('target_stage_id'):
-                    old=c.execute('SELECT * FROM stages WHERE id=%s FOR UPDATE',(ch['target_stage_id'],)).fetchone();before.append(dict(old));c.execute('UPDATE stages SET starts_at=%s,ends_at=%s,version=version+1,updated_at=now() WHERE id=%s',(ch['proposed_start'],ch['proposed_end'],ch['target_stage_id']))
+                    old=c.execute('SELECT * FROM stages WHERE id=%s FOR UPDATE',(ch['target_stage_id'],)).fetchone()
+                    before.append(dict(old))
+                    c.execute('UPDATE stages SET starts_at=%s,ends_at=%s,version=version+1,updated_at=now() WHERE id=%s',(ch['proposed_start'],ch['proposed_end'],ch['target_stage_id']))
                 elif ch.get('proposed_start') and ch.get('target_meeting_id'):
-                    old=c.execute('SELECT * FROM event_meetings WHERE id=%s FOR UPDATE',(ch['target_meeting_id'],)).fetchone();before.append(dict(old));c.execute("UPDATE event_meetings SET start_time=%s,end_time=%s,status='RESCHEDULED',version=version+1,updated_at=now() WHERE id=%s",(ch['proposed_start'],ch['proposed_end'],ch['target_meeting_id']))
-            event=c.execute('UPDATE events SET version=version+1,updated_at=now() WHERE id=%s RETURNING *',(event_id,)).fetchone();history=json.loads(json.dumps(before,default=str));c.execute('INSERT INTO replan_applications(id,event_id,blocker_id,proposal_id,previous_event_version,new_event_version,previous_state) VALUES(%s,%s,%s,%s,%s,%s,%s)',(uuid4(),event_id,blocker_id,proposal_id,row['current_plan_version'],event['version'],Jsonb(history)));row=c.execute("UPDATE replan_proposals SET status='APPROVED',decided_at=now() WHERE id=%s RETURNING *",(proposal_id,)).fetchone();c.execute("UPDATE replan_requests SET status='APPROVED',updated_at=now() WHERE id=%s",(row['request_id'],));return self._proposal(row)
+                    old=c.execute('SELECT * FROM event_meetings WHERE id=%s FOR UPDATE',(ch['target_meeting_id'],)).fetchone()
+                    before.append(dict(old))
+                    recipients=c.execute(
+                        """SELECT DISTINCT p.account_id FROM participations p
+                           WHERE p.event_id=%s AND p.status='ACCEPTED' AND
+                           (%s='ALL_ACTORS' OR (%s='STAGE' AND p.stage_id=%s) OR
+                            (%s='WORK' AND p.work_id=%s) OR (%s='ROLE' AND p.actor_requirement_id=%s) OR
+                            (%s='SPECIFIC_ACTORS' AND %s::jsonb @> jsonb_build_array(p.account_id::text)))""",
+                        (event_id,old['audience'],old['audience'],old['stage_id'],old['audience'],old['work_id'],
+                         old['audience'],old['actor_requirement_id'],old['audience'],Jsonb(old['specific_actor_ids'])),
+                    ).fetchall()
+                    c.execute("UPDATE event_meetings SET start_time=%s,end_time=%s,status='RESCHEDULED',version=version+1,updated_at=now() WHERE id=%s",(ch['proposed_start'],ch['proposed_end'],ch['target_meeting_id']))
+                    detail=(
+                        f"{old['title']} meeting\n"
+                        f"Previous: {self._display_window(old['start_time'],old['end_time'])}\n"
+                        f"Updated: {self._display_window(ch['proposed_start'],ch['proposed_end'])}\n"
+                        "Reason: Event coordination adjustment."
+                    )
+                    for recipient in recipients:
+                        actor_messages.setdefault(recipient['account_id'],[]).append(detail)
+
+            for account_id,changes in actor_messages.items():
+                c.execute(
+                    """INSERT INTO actor_updates(id,event_id,recipient_account_id,audience,update_type,title,message,priority)
+                       VALUES(%s,%s,%s,'ACTOR','ORGANIZER_ANNOUNCEMENT','Plan updated',%s,'NORMAL')""",
+                    (uuid4(),event_id,account_id,'Your work schedule changed.\n\n'+'\n\n'.join(changes)),
+                )
+            event=c.execute('UPDATE events SET version=version+1,updated_at=now() WHERE id=%s RETURNING *',(event_id,)).fetchone()
+            history=json.loads(json.dumps(before,default=str))
+            c.execute('INSERT INTO replan_applications(id,event_id,blocker_id,proposal_id,previous_event_version,new_event_version,previous_state) VALUES(%s,%s,%s,%s,%s,%s,%s)',(uuid4(),event_id,blocker_id,proposal_id,row['current_plan_version'],event['version'],Jsonb(history)))
+            row=c.execute("UPDATE replan_proposals SET status='APPROVED',decided_at=now() WHERE id=%s RETURNING *",(proposal_id,)).fetchone()
+            c.execute("UPDATE replan_requests SET status='APPROVED',updated_at=now() WHERE id=%s",(row['request_id'],))
+            return self._proposal(row)

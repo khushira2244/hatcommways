@@ -5,7 +5,7 @@ let actorPreviewMap,actorFullMap,actorData,humanUpdates=[];
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const when=v=>v?new Date(v).toLocaleString():'Not scheduled';
 const empty=t=>'<div class="empty">'+esc(t)+'</div>';
-const item=(x,rejected=false)=>'<article class="item '+(rejected?'rejected':'')+'"><b>'+esc(x.work_name||x.title)+'</b>'+(x.role_name?'<small>'+esc(x.role_name)+' · '+esc(x.stage_name||'')+'</small>':'')+(x.approved_start?'<small>'+when(x.approved_start)+' – '+when(x.approved_end)+'</small>':'')+(x.start_time?'<small>'+when(x.start_time)+' – '+when(x.end_time)+' · '+esc(x.location||'Location not set')+' · '+esc(x.status)+'</small>':'')+(x.message?'<small>'+esc(x.message)+'</small>':'')+'</article>';
+const item=(x,rejected=false)=>'<article class="item '+(rejected?'rejected':'')+'"><b>'+esc(x.work_name||x.title)+'</b>'+(x.role_name?'<small>'+esc(x.role_name)+' · '+esc(x.stage_name||'')+'</small>':'')+(x.approved_start?'<small>'+when(x.approved_start)+' – '+when(x.approved_end)+'</small>':'')+(x.start_time?'<small>'+when(x.start_time)+' – '+when(x.end_time)+' · '+esc(x.location||'Location not set')+' · '+esc(x.status)+'</small>':'')+(x.message?'<small class="update-message">'+esc(x.message)+'</small>':'')+'</article>';
 
 function render(d,a){
   actorData=d;
@@ -61,6 +61,12 @@ document.querySelectorAll('.dash-nav button').forEach(button=>button.onclick=()=
   document.querySelectorAll('.dash-panel').forEach(panel=>panel.hidden=panel.id!=='panel-'+button.dataset.tab);
   if(button.dataset.tab==='info')requestAnimationFrame(()=>actorFullMap?.activate());
 });
+
+const actorAccountTrigger=document.querySelector('#actor-account-trigger');
+const actorAccountPanel=document.querySelector('#actor-account-panel');
+actorAccountTrigger.onclick=event=>{event.stopPropagation();actorAccountPanel.hidden=!actorAccountPanel.hidden;actorAccountTrigger.setAttribute('aria-expanded',String(!actorAccountPanel.hidden))};
+document.addEventListener('click',event=>{if(!event.target.closest('.dash-account-menu')){actorAccountPanel.hidden=true;actorAccountTrigger.setAttribute('aria-expanded','false')}});
+document.querySelector('#actor-signout').onclick=async()=>{const button=document.querySelector('#actor-signout');const error=document.querySelector('#actor-signout-error');button.disabled=true;error.textContent='';try{await api('/auth/signout',{method:'POST'})}catch(problem){error.textContent=problem.message}finally{clearToken();location.replace('./index.html')}};
 
 document.querySelectorAll('[data-update-chip]').forEach(button=>button.onclick=()=>{const textarea=document.querySelector('#human-update-text');textarea.value=button.dataset.updateChip;textarea.focus()});
 document.querySelector('#submit-human-update').onclick=async()=>{const button=document.querySelector('#submit-human-update');const textarea=document.querySelector('#human-update-text');const message=document.querySelector('#human-update-message');const text=textarea.value;if(!text.trim()){message.textContent='Describe what changed before submitting.';textarea.focus();return}const assignment=selectedAssignment();if(!assignment){message.textContent='An accepted assignment is required.';return}button.disabled=true;button.textContent='Submitting…';message.textContent='';try{const saved=await api('/events/'+eventId+'/human-updates',{method:'POST',body:JSON.stringify({text,participation_id:assignment.id,idempotency_key:crypto.randomUUID()})});humanUpdates.unshift(saved);textarea.value='';message.textContent='Update submitted. Your update was received. Your current assignment remains unchanged until the organizer approves any plan change.';renderHumanUpdates()}catch(error){message.textContent=error.message}finally{button.disabled=false;button.textContent='Submit Update'}};

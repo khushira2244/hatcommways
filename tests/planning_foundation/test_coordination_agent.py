@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from services.agent_runtime.coordination import CoordinationWorkflow
+from services.agent_runtime.coordination import CoordinationWorkflow, SYSTEM_PROMPT, _agent_context
 from services.api import create_app
 from services.planning_foundation.coordination_service import CoordinationService
 from services.planning_foundation.errors import IdempotencyConflictError
@@ -177,8 +177,19 @@ def test_context_contains_only_affected_scope_relevant_actor_meetings_and_resour
     }
     assert {row["account_id"] for row in context.relevant_actors} == {scenario["actor"]}
     assert all(row["status"] == "ACCEPTED" for row in context.relevant_actors)
+    agent_context = _agent_context(context)
+    assert "relevant_actors" not in agent_context
+    assert {row["actor_id"] for row in agent_context["eligible_actors"]} == {str(scenario["actor"])}
+    assert all(row["role"] and row["work"] and row["stage"] for row in agent_context["eligible_actors"])
+    assert all("availability" in row for row in agent_context["eligible_actors"])
     assert "original_text" not in context.model_dump_json()
     assert "email" not in context.model_dump_json()
+
+
+def test_agent_contract_distinguishes_actor_id_from_other_scoped_ids():
+    assert "exact eligible_actors[].actor_id values" in SYSTEM_PROMPT
+    assert "never use participation_id, actor_requirement_id" in SYSTEM_PROMPT
+    assert "Leave target_actor_id null" in SYSTEM_PROMPT
 
 
 def test_invalid_action_ids_fail_and_runtime_failure_requires_explicit_retry(database, scenario):

@@ -21,6 +21,56 @@ PROVIDER_NAME = "amazon-bedrock"
 AGENT_NAME = "hatcommways-coordination-agent"
 AGENT_VERSION = "v1"
 
+SYSTEM_PROMPT = (
+    "You are the bounded Hatcommways Coordination Agent. Call get_coordination_context "
+    "exactly once and use only its facts. Propose small coordination actions that try to "
+    "preserve the confirmed stage and work plan. The only eligible actor identifiers are the "
+    "exact eligible_actors[].actor_id values. When target_actor_id is needed, copy one of those "
+    "actor_id values exactly; never use participation_id, actor_requirement_id, another UUID, "
+    "or an invented actor or name. If no eligible alternate actor exists, do not propose a "
+    "reassignment. Use a grounded actorless action such as REQUEST_CLARIFICATION, "
+    "WAIT_FOR_CONDITION, RESCHEDULE_MEETING, or TEMPORARY_WORKAROUND, or set "
+    "requires_replanning true when preserving the plan is not credible. Leave target_actor_id "
+    "null for actions that do not require an actor. Copy only event, blocker, resolution, work, "
+    "meeting, and resource identifiers present in context. Never change work or stage times, "
+    "dependencies, work definitions, participation, assignments, blocker lifecycle, or send a "
+    "notification. NOTIFY_ACTOR is only a proposed notification. RESCHEDULE_MEETING may change "
+    "a relevant meeting suggestion but never work timing. REASSIGNMENT_SUGGESTION is an "
+    "approval-required suggestion only. If known facts provide a safe workaround, set "
+    "coordination_possible true and requires_replanning false. If preserving confirmed timing "
+    "is not credible, set coordination_possible false and requires_replanning true. If facts "
+    "are insufficient, request clarification without inventing details and keep replanning false. "
+    "Return only the typed CoordinationDecision."
+)
+
+
+def _agent_context(context: Any) -> dict[str, Any]:
+    """Expose a compact actor allowlist with identifiers named for their exact use."""
+    payload = context.model_dump(mode="json")
+    actors = payload.pop("relevant_actors", [])
+    payload["eligible_actors"] = [
+        {
+            "actor_id": row["account_id"],
+            "participation_id": row["participation_id"],
+            "role": row["canonical_role_name"],
+            "stage_id": row["stage_id"],
+            "stage": row["stage_name"],
+            "work_id": row["work_id"],
+            "work": row["work_name"],
+            "approved_start": row["approved_start"],
+            "approved_end": row["approved_end"],
+            "availability": {
+                "type": row["availability_type"],
+                "start": row["availability_start"],
+                "end": row["availability_end"],
+                "max_commitment_minutes": row["max_commitment_minutes"],
+                "allow_alternative_work": row["allow_alternative_work"],
+            },
+        }
+        for row in actors
+    ]
+    return payload
+
 
 @dataclass(frozen=True)
 class CoordinationAgentResult:
@@ -51,7 +101,7 @@ class StrandsCoordinationAgent:
         def get_coordination_context() -> dict[str, Any]:
             nonlocal calls
             calls += 1
-            return self.service.context(event_id, blocker_id, organizer_id).model_dump(mode="json")
+            return _agent_context(self.service.context(event_id, blocker_id, organizer_id))
 
         agent = Agent(
             name=AGENT_NAME,
@@ -59,20 +109,7 @@ class StrandsCoordinationAgent:
             tools=[get_coordination_context],
             structured_output_model=CoordinationDecision,
             callback_handler=None,
-            system_prompt=(
-                "You are the bounded Hatcommways Coordination Agent. Call get_coordination_context "
-                "exactly once and use only its facts. Propose small coordination actions that try to "
-                "preserve the confirmed stage and work plan. Copy only event, blocker, resolution, actor, "
-                "work, meeting, and resource identifiers present in context. Never change work or stage "
-                "times, dependencies, work definitions, participation, assignments, blocker lifecycle, or "
-                "send a notification. NOTIFY_ACTOR is only a proposed notification. RESCHEDULE_MEETING may "
-                "change a relevant meeting suggestion but never work timing. REASSIGNMENT_SUGGESTION is an "
-                "approval-required suggestion only. If known facts provide a safe workaround, set "
-                "coordination_possible true and requires_replanning false. If preserving confirmed timing "
-                "is not credible, set coordination_possible false and requires_replanning true. If facts "
-                "are insufficient, request clarification without inventing details and keep replanning false. "
-                "Return only the typed CoordinationDecision."
-            ),
+            system_prompt=SYSTEM_PROMPT,
         )
         result = agent(f"Coordinate blocker {blocker_id} in event {event_id} without rewriting its plan.")
         if calls != 1:

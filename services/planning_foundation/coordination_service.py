@@ -150,11 +150,15 @@ class CoordinationService:
             raise StaleVersionError("affected-work scope is no longer authoritative")
 
         actors = connection.execute(
-            """SELECT p.id AS participation_id,p.account_id,a.display_name,p.stage_id,p.work_id,
-                      p.actor_requirement_id,p.approved_start,p.approved_end,p.status,
+            """SELECT p.id AS participation_id,p.account_id,a.display_name,p.stage_id,s.canonical_name AS stage_name,
+                      p.work_id,w.canonical_name AS work_name,p.actor_requirement_id,
+                      ar.canonical_role_name,p.approved_start,p.approved_end,p.status,
                       pri.availability_type,pri.availability_start,pri.availability_end,
                       pri.max_commitment_minutes,pri.allow_alternative_work
                FROM participations p JOIN accounts a ON a.id=p.account_id
+               JOIN actor_requirements ar ON ar.id=p.actor_requirement_id
+               JOIN stages s ON s.id=p.stage_id
+               JOIN work_items w ON w.id=p.work_id
                JOIN participation_request_items pri ON pri.id=p.approved_from_request_item_id
                WHERE p.event_id=%s AND p.status='ACCEPTED'
                  AND (p.work_id=ANY(%s::uuid[]) OR p.stage_id=ANY(%s::uuid[]))

@@ -261,6 +261,8 @@ class HumanUpdateSnapshot(ReportModel):
     interpretation_attempt_count: int = 0
     created_at: datetime
     version: int
+    reporter_display_name: str | None = None
+    role_name: str | None = None
     interpretation: HumanUpdateInterpretationSnapshot | None = None
 
 

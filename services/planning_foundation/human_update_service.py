@@ -134,7 +134,11 @@ class HumanUpdateService:
                 if not accepted:
                     raise AuthorizationError('accepted participation is required')
             rows = c.execute(
-                """SELECT h.*,to_jsonb(i) AS interpretation FROM human_updates h
+                """SELECT h.*,a.display_name AS reporter_display_name,
+                          ar.canonical_role_name AS role_name,to_jsonb(i) AS interpretation
+                   FROM human_updates h
+                   JOIN accounts a ON a.id=h.reporter_account_id
+                   LEFT JOIN actor_requirements ar ON ar.id=h.actor_requirement_id
                    LEFT JOIN human_update_interpretations i ON i.human_update_id=h.id
                    WHERE h.event_id=%s""" + ("" if organizer else " AND h.reporter_account_id=%s") +
                    " ORDER BY h.created_at DESC,h.id",
