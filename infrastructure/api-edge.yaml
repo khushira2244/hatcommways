@@ -1,0 +1,43 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: HTTPS CloudFront entry point for the Hatcommways API load balancer
+
+Parameters:
+  OriginDomainName:
+    Type: String
+    Description: DNS name of the existing Hatcommways application load balancer
+
+Resources:
+  ApiDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: Hatcommways API HTTPS proxy
+        Enabled: true
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: HatcommwaysAlb
+            DomainName: !Ref OriginDomainName
+            CustomOriginConfig:
+              HTTPPort: 80
+              OriginProtocolPolicy: http-only
+              OriginReadTimeout: 30
+              OriginKeepaliveTimeout: 5
+        DefaultCacheBehavior:
+          TargetOriginId: HatcommwaysAlb
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+          CachedMethods: [GET, HEAD, OPTIONS]
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+          Compress: false
+      Tags:
+        - Key: Project
+          Value: Hatcommways
+
+Outputs:
+  DistributionId:
+    Value: !Ref ApiDistribution
+  HttpsApiBaseUrl:
+    Value: !Sub https://${ApiDistribution.DomainName}

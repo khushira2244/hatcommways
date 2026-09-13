@@ -14,9 +14,15 @@ if not database_url:
 
 database = Database(database_url)
 database.apply_schema()
+cors_origins = [
+    origin.strip()
+    for origin in os.environ.get("HATCOMMWAYS_CORS_ORIGINS", "").split(",")
+    if origin.strip()
+]
 app = create_app(
     database,
     execute_planning_requests=True,
     google_maps_api_key=os.environ.get("HATCOMMWAYS_GOOGLE_MAPS_API_KEY"),
     google_maps_map_id=os.environ.get("HATCOMMWAYS_GOOGLE_MAPS_MAP_ID"),
+    cors_origins=cors_origins,
 )

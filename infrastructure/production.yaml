@@ -19,15 +19,22 @@ Parameters:
   ImageUri:
     Type: String
     Default: ''
+  ApiImageUri:
+    Type: String
+    Default: ''
   DesiredCount:
     Type: Number
     Default: 0
   FailureProofMessageId:
     Type: String
     Default: ''
+  FrontendOrigin:
+    Type: String
+    Default: ''
 
 Conditions:
   DeployServices: !Not [!Equals [!Ref ImageUri, '']]
+  UseDedicatedApiImage: !Not [!Equals [!Ref ApiImageUri, '']]
 
 Resources:
   ContainerRepository:
@@ -257,7 +264,7 @@ Resources:
       TaskRoleArn: !GetAtt ApplicationTaskRole.Arn
       ContainerDefinitions:
         - Name: api
-          Image: !Ref ImageUri
+          Image: !If [UseDedicatedApiImage, !Ref ApiImageUri, !Ref ImageUri]
           Essential: true
           PortMappings:
             - ContainerPort: 8000
@@ -269,6 +276,8 @@ Resources:
           Environment:
             - Name: HATCOMMWAYS_AWS_REGION
               Value: !Ref AWS::Region
+            - Name: HATCOMMWAYS_CORS_ORIGINS
+              Value: !Ref FrontendOrigin
           LogConfiguration:
             LogDriver: awslogs
             Options:

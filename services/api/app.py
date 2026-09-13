@@ -213,13 +213,19 @@ def create_app(
     replanning_runtime: ReplanningRuntime | None = None,
     google_maps_api_key: str | None = None,
     google_maps_map_id: str | None = None,
+    cors_origins: list[str] | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Hatcommways API", version="0.1.0")
+    allowed_origins = list(dict.fromkeys([
+        "http://127.0.0.1:4173",
+        "http://localhost:4173",
+        *(cors_origins or []),
+    ]))
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://127.0.0.1:4173", "http://localhost:4173"],
+        allow_origins=allowed_origins,
         allow_credentials=False,
-        allow_methods=["GET", "POST", "PUT", "PATCH"],
+        allow_methods=["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],
     )
     auth = AuthService(database)
