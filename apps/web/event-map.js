@@ -26,16 +26,17 @@
     if(global.google?.maps)return global.google.maps;
     if(googlePromise)return googlePromise;
     googlePromise=(async()=>{
-      const config=await global.api('/web-config');
-      if(!config.google_maps_api_key)throw new Error('Google Maps is not configured for this environment.');
-      if(!config.google_maps_map_id)throw new Error('A Google Maps map ID is not configured for this environment.');
-      configuredMapId=config.google_maps_map_id;
+      const apiKey=global.HATCOMMWAYS_GOOGLE_MAPS_API_KEY;
+      const mapId=global.HATCOMMWAYS_GOOGLE_MAPS_MAP_ID;
+      if(!apiKey)throw new Error('Google Maps is not configured for this environment.');
+      if(!mapId)throw new Error('A Google Maps map ID is not configured for this environment.');
+      configuredMapId=mapId;
       return new Promise((resolve,reject)=>{
         const callback='__hatcommwaysGoogleMapsReady';
         global[callback]=()=>{delete global[callback];resolve(global.google.maps)};
         const script=document.createElement('script');
         script.src='https://maps.googleapis.com/maps/api/js?key='+
-          encodeURIComponent(config.google_maps_api_key)+'&callback='+callback+'&v=weekly&libraries=marker';
+          encodeURIComponent(apiKey)+'&callback='+callback+'&v=weekly&libraries=marker';
         script.async=true;
         script.onerror=()=>{
           delete global[callback];
