@@ -150,6 +150,9 @@ async function initializeApp() {
 let discoveryEvents = [];
 let discoveryMap = null;
 let discoveryMapEntries = [];
+let discoveryMaps = null;
+let discoveryCenter = null;
+let selectedDiscoveryId = null;
 
 const CATEGORY_ICONS = { All: "▦", Environment: "●", Education: "◆", Health: "♥", Community: "●", "Arts & Culture": "✣", Other: "•••" };
 const DEMO_DISCOVERY_CENTER = Object.freeze({ lat: 23.356542, lng: 85.340022 });
@@ -165,10 +168,15 @@ const DISCOVERY_MARKER_STYLES = {
 };
 const discoveryEsc = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
 let activeCategory = "All";
+function normalizeDiscoveryCategory(value) {
+  const key = String(value || '').trim().replace(/_/g, ' ').toLowerCase();
+  return Object.keys(DISCOVERY_MARKER_STYLES).find(category => category.toLowerCase() === key) || 'Other';
+}
 
 async function initializeDiscovery() {
   const markerHost = document.querySelector("#event-markers");
   if (!markerHost) return;
+  markerHost.setAttribute('aria-label', 'Event results');
   const chipHost = document.querySelector("#category-chips");
   Object.keys(CATEGORY_ICONS).forEach((category) => {
     const button = document.createElement("button");
@@ -181,10 +189,10 @@ async function initializeDiscovery() {
   });
   document.querySelector("#category-select").addEventListener("change", (event) => setCategory(event.target.value));
   document.querySelector("#event-search").addEventListener("input", renderMarkers);
-  document.querySelector('.action-card--join')?.addEventListener('click',event=>{event.preventDefault();document.querySelector('#discovery').scrollIntoView({behavior:'smooth',block:'start'});setTimeout(()=>document.querySelector('#event-search').focus(),350)});
+  document.querySelector('.action-card--join')?.addEventListener('click',event=>{event.preventDefault();document.querySelector('#discovery').scrollIntoView({behavior:'smooth',block:'start'});document.querySelector('#event-search').focus({preventScroll:true})});
   try {
     const rows = await api('/events/discover');
-    discoveryEvents = rows.map(item => ({...item,category:item.category||'Other',status:new Date(item.starts_at)>new Date()?'Upcoming':'Open',date:new Date(item.starts_at).toLocaleString([],{dateStyle:'medium',timeStyle:'short'}),location:item.location_description,people:item.participant_count}));
+    discoveryEvents = rows.map(item => ({...item,category:normalizeDiscoveryCategory(item.category),status:new Date(item.starts_at)>new Date()?'Upcoming':'Open',date:new Date(item.starts_at).toLocaleString([],{dateStyle:'medium',timeStyle:'short'}),location:item.location_description,people:item.participant_count}));
     renderMarkers();
     await initializeDiscoveryMap();
   } catch (error) {
@@ -192,10 +200,71 @@ async function initializeDiscovery() {
   }
 }
 
-function browserLocation(){return new Promise(resolve=>{if(!navigator.geolocation){resolve(null);return}navigator.geolocation.getCurrentPosition(position=>resolve({lat:position.coords.latitude,lng:position.coords.longitude}),()=>resolve(null),{enableHighAccuracy:false,timeout:5000,maximumAge:300000})})}
+function browserLocation(){return new Promise(resolve=>{if(!navigator.geolocation){resolve(null);return}navigator.geolocation.getCurrentPosition(position=>resolve({lat:position.coords.latitude,lng:position.coords.longitude}),()=>resolve(null),{enableHighAccuracy:true,timeout:8000,maximumAge:0})})}
 async function geocodeEvent(maps,event){if(event.latitude!=null&&event.longitude!=null)return{lat:event.latitude,lng:event.longitude};try{const result=await new maps.Geocoder().geocode({address:event.location_description});const location=result.results[0]?.geometry?.location;return location?{lat:location.lat(),lng:location.lng()}:null}catch{return null}}
 function discoveryMarkerStyle(category){return DISCOVERY_MARKER_STYLES[category]||DISCOVERY_MARKER_STYLES.Other}
-async function initializeDiscoveryMap(){const host=document.querySelector('#discovery-google-map');const status=document.querySelector('#discovery-map-status');try{const maps=await HatcommwaysEventMap.loadGoogleMaps();const markerLibrary=await maps.importLibrary('marker');const current=await browserLocation();discoveryMap=new maps.Map(host,{center:current||DEMO_DISCOVERY_CENTER,zoom:current?12:11,mapId:HatcommwaysEventMap.getMapId(),mapTypeControl:false,streetViewControl:false});document.querySelector('#map-canvas').classList.add('has-google-map');const entries=[];for(const event of discoveryEvents){const position=await geocodeEvent(maps,event);if(!position)continue;const style=discoveryMarkerStyle(event.category);const pin=new markerLibrary.PinElement({background:style.background,borderColor:'#fff',glyphColor:'#fff',glyph:style.glyph});const marker=new markerLibrary.AdvancedMarkerElement({map:discoveryMap,position,title:event.name,content:pin.element});marker.addListener('click',()=>showEventPreview(event));entries.push({event,marker,position})}discoveryMapEntries=entries;status.textContent=current?'Map centered near your current location.':'Using the demo fallback area near Ranchi.';renderMarkers()}catch(error){status.textContent='Interactive map unavailable. Search and event results still work.';host.hidden=true}}
+async function initializeDiscoveryMap() {
+  const host = document.querySelector('#discovery-google-map');
+  const status = document.querySelector('#discovery-map-status');
+  const locationRequest = browserLocation();
+  try {
+    const maps = await HatcommwaysEventMap.loadGoogleMaps();
+    discoveryMaps = maps;
+    const markerLibrary = await maps.importLibrary('marker');
+    discoveryCenter = DEMO_DISCOVERY_CENTER;
+    discoveryMap = new maps.Map(host, {center: discoveryCenter, zoom: 11,
+      mapId: HatcommwaysEventMap.getMapId(), mapTypeControl: false, streetViewControl: false});
+    document.querySelector('#map-canvas').classList.add('has-google-map');
+    const entries = await Promise.all(discoveryEvents.map(async event => {
+      const position = await geocodeEvent(maps, event);
+      if (!position) return null;
+      const style = discoveryMarkerStyle(event.category);
+      const pin = new markerLibrary.PinElement({background: style.background,
+        borderColor: '#fff', glyphColor: '#fff', glyph: style.glyph});
+      const marker = new markerLibrary.AdvancedMarkerElement({position,
+        title: event.name, content: pin.element});
+      marker.addListener('click', () => showEventPreview(event));
+      return {event, marker, position};
+    }));
+    discoveryMapEntries = entries.filter(Boolean);
+    renderMarkers();
+    const current = await locationRequest;
+    discoveryCenter = current || DEMO_DISCOVERY_CENTER;
+    status.textContent = current ? 'Showing events near your current location.' : 'Using the Ranchi fallback area.';
+    // Recenter existing markers; never recreate or clear results after geolocation.
+    if (!selectedDiscoveryId) fitDiscoveryBounds();
+  } catch (error) {
+    status.textContent = 'Interactive map unavailable. Search and event results still work.';
+    host.hidden = true;
+  }
+}
+
+function fitDiscoveryBounds() {
+  if (!discoveryMap || !discoveryMaps) return;
+  const visible = discoveryMapEntries.filter(entry => entry.marker.map);
+  const center = discoveryCenter || DEMO_DISCOVERY_CENTER;
+  const nearby = visible.filter(({position}) => {
+    const dy = (position.lat - center.lat) * 111.2;
+    const dx = (position.lng - center.lng) * 111.2 * Math.cos(center.lat * Math.PI / 180);
+    return Math.hypot(dx, dy) <= 30;
+  });
+  const filtered = activeCategory !== 'All' || document.querySelector('#event-search').value.trim();
+  const entries = nearby.length ? nearby : filtered ? visible : [];
+  if (!entries.length) { discoveryMap.setCenter(center); discoveryMap.setZoom(12); return; }
+  const bounds = new discoveryMaps.LatLngBounds();
+  if (nearby.length) bounds.extend(center);
+  entries.forEach(entry => bounds.extend(entry.position));
+  document.querySelector('#event-preview').hidden = true;
+  const list = document.querySelector('#event-markers');
+  const mapRect = document.querySelector('#map-canvas').getBoundingClientRect();
+  const listRect = list.getBoundingClientRect();
+  const overlaysMap = listRect.top < mapRect.bottom && listRect.bottom > mapRect.top;
+  discoveryMap.fitBounds(bounds, {top: 80, right: 55, bottom: 90,
+    left: overlaysMap ? Math.min(listRect.width + 45, mapRect.width * .45) : 40});
+  discoveryMaps.event.addListenerOnce(discoveryMap, 'idle', () => {
+    if (discoveryMap.getZoom() > 15) discoveryMap.setZoom(15);
+  });
+}
 
 function setCategory(category) {
   activeCategory = category;
@@ -210,8 +279,7 @@ function renderMarkers() {
   markerHost.replaceChildren();
   const matches = discoveryEvents.filter((item) => (activeCategory === "All" || item.category === activeCategory) && (!term || `${item.name} ${item.location} ${item.category}`.toLowerCase().includes(term)));
   discoveryMapEntries.forEach(entry=>{entry.marker.map=matches.includes(entry.event)?discoveryMap:null});
-  if(!matches.length){markerHost.innerHTML='<p class="no-events-found">No events found</p>';document.querySelector('#event-preview').hidden=true;return}
-  if(discoveryMap){if(term){const selected=discoveryMapEntries.find(entry=>entry.event===matches[0]);if(selected){discoveryMap.panTo(selected.position);discoveryMap.setZoom(14)}showEventPreview(matches[0])}return}
+  if(!matches.length){selectedDiscoveryId=null;markerHost.innerHTML='<p class="no-events-found">No events found</p>';document.querySelector('#event-preview').hidden=true;fitDiscoveryBounds();return}
   matches.forEach((item) => {
     const marker = document.createElement("button");
     marker.type = "button";
@@ -221,10 +289,15 @@ function renderMarkers() {
     marker.addEventListener("click", () => showEventPreview(item));
     markerHost.append(marker);
   });
-  if(term)showEventPreview(matches[0]);
+  selectedDiscoveryId = null;
+  document.querySelector('#event-preview').hidden = true;
+  fitDiscoveryBounds();
 }
 
 function showEventPreview(item) {
+  selectedDiscoveryId = item.id;
+  const entry = discoveryMapEntries.find(entry => entry.event.id === item.id);
+  if (entry && discoveryMap) { discoveryMap.panTo(entry.position); discoveryMap.setZoom(14); }
   const preview = document.querySelector("#event-preview");
   preview.innerHTML = `<button class="preview-close" type="button" aria-label="Close preview">×</button><span class="preview-status">${discoveryEsc(item.status)}</span><h3>${discoveryEsc(item.name)}</h3><dl><div><dt>Date</dt><dd>${discoveryEsc(item.date)}</dd></div><div><dt>Location</dt><dd>${discoveryEsc(item.location)}</dd></div><div><dt>Category</dt><dd>${discoveryEsc(item.category||'Uncategorized')}</dd></div><div><dt>People</dt><dd>${discoveryEsc(item.people)} participating</dd></div></dl><p>${discoveryEsc(item.purpose)}</p><a class="button button--primary" href="./event.html?event=${encodeURIComponent(item.id)}">View Event</a>`;
   preview.hidden = false;
