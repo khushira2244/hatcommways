@@ -183,7 +183,9 @@ async function initializeDiscovery() {
     button.type = "button";
     button.dataset.category = category;
     button.className = category === "All" ? "is-active" : "";
-    button.innerHTML = `<span>${CATEGORY_ICONS[category]}</span>${category}`;
+    const markerStyle = category === 'All' ? null : discoveryMarkerStyle(category);
+    if (markerStyle) button.style.setProperty('--category-color', markerStyle.background);
+    button.innerHTML = `<span aria-hidden="true">${markerStyle?.glyph || CATEGORY_ICONS[category]}</span>${category}`;
     button.addEventListener("click", () => setCategory(category));
     chipHost.append(button);
   });

@@ -164,7 +164,7 @@ fieldset { border: 0; padding: 0; margin: 0; }
   .discovery #discovery-map-status { top: 455px; bottom: auto; }
 }
 .category-chips { position: absolute; z-index: 6; left: 18px; bottom: 18px; display: flex; gap: 4px; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: white; box-shadow: 0 5px 18px rgba(29,69,55,.12); }
-.category-chips button { border:0; border-radius:8px; padding:9px 12px; background:transparent; color:var(--ink); font:inherit; font-size:.83rem; cursor:pointer; white-space:nowrap; }.category-chips button span { margin-right:7px; color:var(--green); }.category-chips button.is-active { background:var(--green-light); color:var(--green-dark); font-weight:700; }
+.category-chips button { border:0; border-radius:8px; padding:9px 12px; background:transparent; color:var(--ink); font:inherit; font-size:.83rem; cursor:pointer; white-space:nowrap; }.category-chips button span { margin-right:7px; color:var(--category-color,var(--green)); }.category-chips button.is-active { background:var(--green-light); color:var(--green-dark); font-weight:700; }
 .visually-hidden { position:absolute!important; width:1px!important; height:1px!important; padding:0!important; margin:-1px!important; overflow:hidden!important; clip:rect(0,0,0,0)!important; white-space:nowrap!important; border:0!important; }
 .placeholder-page { width:min(100% - 40px,720px); margin:15vh auto; padding:45px; border:1px solid var(--line); border-radius:22px; background:white; box-shadow:var(--shadow); }.placeholder-page h1 { font-family:var(--font-display); margin:28px 0 10px; }.placeholder-page p { color:var(--ink-soft); }
 
