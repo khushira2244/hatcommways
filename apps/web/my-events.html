@@ -10,14 +10,14 @@
     <link rel="stylesheet" href="./styles.css">
     <link rel="stylesheet" href="./auth.css">
     <link rel="stylesheet" href="./my-events.css?v=20260911-grid">
-  </head>
+  <link rel="stylesheet" href="./authenticated-header.css"></head>
   <body>
     <div id="my-events-page" hidden>
       <header class="app-header">
         <a class="brand" href="./app.html" aria-label="Hatcommways Explore"><img class="brand-logo" src="./hatcommways-logo.png" alt="Hatcommways"></a>
         <nav class="app-nav" aria-label="Authenticated navigation"><a href="./app.html">Explore</a><a class="is-active" href="./my-events.html">My Events</a><a href="./create-event.html">Create Event</a></nav>
         <div class="account-menu">
-          <button id="me-account-trigger" class="account-menu__button" type="button" aria-expanded="false" aria-controls="me-account-panel"><span class="account-avatar" id="me-avatar"></span><span class="account-trigger-copy"><strong id="me-name"></strong><small id="me-type"></small></span><span aria-hidden="true">⌄</span></button>
+          <button id="me-account-trigger" class="account-menu__button" type="button" aria-expanded="false" aria-controls="me-account-panel"><span class="account-avatar" id="me-avatar"></span><span class="account-trigger-copy"><strong id="me-name"></strong><small id="me-type"></small></span><svg class="account-chevron" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m4 6 4 4 4-4"/></svg></button>
           <div class="account-menu__panel" id="me-account-panel" hidden><a href="./app.html">Explore Events</a><button class="signout-button" id="me-signout" type="button">Sign Out</button></div>
         </div>
       </header>
