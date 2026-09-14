@@ -102,3 +102,7 @@ Follow [the demo](docs/demo.md). Show persisted proposals and human decisions ra
 ## What's Next
 
 Future work includes human-led governance expansion, richer sponsor coordination, cross-community collaboration, outcome tracking, templates and **Hatcommways Memory Map**: reusable work structures, coordination patterns, bottlenecks, sponsor/resource patterns, governance decisions, failures and project blueprints. These are directions, not completed features.
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
