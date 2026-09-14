@@ -835,3 +835,45 @@ CREATE TABLE IF NOT EXISTS replan_applications (
  id uuid PRIMARY KEY,event_id uuid NOT NULL REFERENCES events(id),blocker_id uuid NOT NULL REFERENCES blockers(id),proposal_id uuid NOT NULL UNIQUE REFERENCES replan_proposals(id),
  previous_event_version integer NOT NULL,new_event_version integer NOT NULL,previous_state jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now()
 );
+
+
+-- Sponsor offers form the authoritative approved contribution ledger.
+CREATE TABLE IF NOT EXISTS support_offers (
+ id uuid PRIMARY KEY,
+ event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+ sponsor_account_id uuid NOT NULL REFERENCES accounts(id),
+ resource_need_id uuid,
+ resource_snapshot jsonb,
+ support_type varchar(100) NOT NULL,
+ quantity numeric(12,3) CHECK(quantity > 0),
+ availability_start timestamptz, availability_end timestamptz,
+ comment varchar(2000) NOT NULL DEFAULT '',
+ status varchar(20) NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING','APPROVED','REJECTED')),
+ created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+ reviewed_at timestamptz, reviewed_by uuid REFERENCES accounts(id),
+ version integer NOT NULL DEFAULT 1 CHECK(version>0),
+ idempotency_key varchar(200) NOT NULL, request_fingerprint varchar(64) NOT NULL,
+ correlation_id uuid NOT NULL,
+ UNIQUE(sponsor_account_id,idempotency_key),
+ CHECK((availability_start IS NULL AND availability_end IS NULL) OR
+       (availability_start IS NOT NULL AND availability_end IS NOT NULL AND availability_end>availability_start)),
+ CHECK(quantity IS NULL OR resource_need_id IS NOT NULL),
+ CHECK((status='PENDING' AND reviewed_at IS NULL AND reviewed_by IS NULL) OR
+       (status<>'PENDING' AND reviewed_at IS NOT NULL AND reviewed_by IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS support_offers_event_idx ON support_offers(event_id,status);
+CREATE TABLE IF NOT EXISTS sponsor_fit_results (
+ offer_id uuid PRIMARY KEY REFERENCES support_offers(id) ON DELETE CASCADE,
+ version integer NOT NULL DEFAULT 1 CHECK(version=1),
+ result jsonb NOT NULL CHECK(jsonb_typeof(result)='object'),
+ provenance jsonb NOT NULL CHECK(jsonb_typeof(provenance)='object'),
+ created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE event_notifications ALTER COLUMN participation_request_id DROP NOT NULL;
+ALTER TABLE event_notifications ADD COLUMN IF NOT EXISTS support_offer_id uuid REFERENCES support_offers(id) ON DELETE CASCADE;
+ALTER TABLE event_notifications DROP CONSTRAINT IF EXISTS event_notifications_notification_type_check;
+ALTER TABLE event_notifications ADD CONSTRAINT event_notifications_notification_type_check CHECK(
+ (notification_type='PARTICIPATION_REQUEST' AND participation_request_id IS NOT NULL AND support_offer_id IS NULL) OR
+ (notification_type='SPONSOR_OFFER' AND support_offer_id IS NOT NULL AND participation_request_id IS NULL)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS event_notifications_offer_idx ON event_notifications(account_id,support_offer_id);

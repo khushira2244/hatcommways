@@ -81,7 +81,7 @@ class ParticipationService:
         with self.database.connect() as c:
             owner=c.execute("SELECT 1 FROM event_memberships WHERE event_id=%s AND account_id=%s AND role='ORGANIZER' AND status='ACTIVE'",(event_id,organizer_id)).fetchone()
             if not owner: raise AuthorizationError('organizer authorization required')
-            notes=c.execute("SELECT * FROM event_notifications WHERE event_id=%s AND account_id=%s ORDER BY created_at DESC",(event_id,organizer_id)).fetchall()
+            notes=c.execute("SELECT * FROM event_notifications WHERE event_id=%s AND account_id=%s AND notification_type='PARTICIPATION_REQUEST' ORDER BY created_at DESC",(event_id,organizer_id)).fetchall()
         return [dict(n)|{'request':self.get_request(n['participation_request_id'],organizer_id,True)} for n in notes]
 
     def decide_item(self,item_id,organizer_id,decision,idempotency_key):

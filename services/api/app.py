@@ -59,6 +59,8 @@ from services.planning_foundation.actor_requirement_service import ActorRequirem
 from services.planning_foundation.event_setup_models import EventSetupSnapshot, EventSetupUpdateRequest
 from services.planning_foundation.event_setup_service import EventSetupService
 from services.planning_foundation.database import Database
+from services.planning_foundation.support_offer_service import SupportOfferService
+from services.planning_foundation.support_offer_models import OfferSubmit, OfferDecision
 from services.planning_foundation.errors import (
     AuthorizationError,
     NotFoundError,
@@ -228,6 +230,7 @@ def create_app(
         allow_methods=["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],
     )
+    support_offers = SupportOfferService(database)
     auth = AuthService(database)
     authorization = AccountAuthorizationService(database)
     stage_service = StagePlanningService(database)
@@ -328,6 +331,22 @@ def create_app(
         if credentials is None or credentials.scheme.lower() != "bearer":
             raise InvalidSessionError("authentication required")
         return credentials.credentials, auth.authenticate(credentials.credentials)
+
+    @app.get("/events/{event_id}/support-offers")
+    def support_workspace(event_id: UUID, session: AuthenticatedSession = Depends(authenticated)):
+        return support_offers.workspace(event_id, session.account.id)
+
+    @app.post("/events/{event_id}/support-offers", status_code=201)
+    def submit_support(event_id: UUID, body: OfferSubmit, session: AuthenticatedSession = Depends(authenticated)):
+        return support_offers.submit(event_id, session.account.id, body)
+
+    @app.get("/events/{event_id}/support-notifications")
+    def support_notifications(event_id: UUID, session: AuthenticatedSession = Depends(authenticated)):
+        return support_offers.notifications(event_id, session.account.id)
+
+    @app.post("/events/{event_id}/support-offers/{offer_id}/decision")
+    def decide_support(event_id: UUID, offer_id: UUID, body: OfferDecision, session: AuthenticatedSession = Depends(authenticated)):
+        return support_offers.decide(event_id, offer_id, session.account.id, body)
 
     @app.get("/web-config",response_model=WebConfig)
     def web_config(_session: AuthenticatedSession = Depends(authenticated)):

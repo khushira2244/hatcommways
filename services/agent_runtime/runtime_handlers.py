@@ -12,6 +12,8 @@ from services.planning_foundation.coordination_service import CoordinationServic
 from services.planning_foundation.database import Database
 
 from .coordination import CoordinationWorkflow, StrandsCoordinationAgent
+from .sponsor_fit import SponsorFitWorkflow
+from services.planning_foundation.support_offer_service import SupportOfferService
 from .runtime_events import RuntimeEventEnvelope
 from .runtime_worker import RetryableRuntimeError, RuntimeHandler, RuntimeRouter
 
@@ -52,6 +54,11 @@ def production_router(database: Database) -> RuntimeRouter:
         }
 
     return RuntimeRouter({
+        "support_offer.submitted": RuntimeHandler(
+            name="hatcommways-sponsor-fit-agent",
+            execute=SponsorFitWorkflow(SupportOfferService(database)).execute,
+            max_attempts=3, policy_reference="sponsor-fit-bounded-v1",
+        ),
         "blocker.affected_work_resolved": RuntimeHandler(
             name="hatcommways-coordination-agent",
             execute=coordinate_affected_work,

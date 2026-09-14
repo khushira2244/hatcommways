@@ -17,6 +17,7 @@ from .runtime_events import RuntimeEventEnvelope
 
 
 CORE_RUNTIME_EVENTS = frozenset({
+    "support_offer.submitted",
     "human_update.submitted",
     "human_update.interpreted",
     "blocker_assessment.assessed",
