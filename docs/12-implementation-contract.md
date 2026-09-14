@@ -1,5 +1,7 @@
 # Hatcommways — Implementation Contract
 
+> Design/planning reference, not a deployed feature inventory. For current behavior and boundaries, see the [implementation documentation index](README.md). Broader capabilities below remain proposals unless confirmed there.
+
 ## 1. Purpose
 
 This document translates the canonical Hatcommways architecture into a concrete build contract.

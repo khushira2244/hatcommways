@@ -1,75 +1,31 @@
-# Sponsor support vertical slice
+# Sponsor support and My Sponsorships
 
-The existing Event Home owns submission and review. Notifications link to
-`event.html?event={event_id}&tab=resources&offer={offer_id}`; no new page exists.
+[Documentation index](README.md)
 
-## Persistence and authority
+## Submission, reasoning and human decision
 
-`support_offers` stores the sponsor account, selected resource snapshot/reference,
-quantity, availability, comment, decision/version, idempotency fingerprint and
-correlation ID. Only APPROVED rows form the authoritative contribution ledger.
-The support workspace projects these into Sponsors & Support and sums their
-quantities into pledged/remaining values. Pending/rejected rows contribute zero.
-Existing manually configured sponsors remain intact.
+Explore → Event Home → Resources & Sponsors → Support This Event. Submission atomically writes a PENDING `support_offers` row, notification and `support_offer.submitted` outbox record. EventBridge → SQS → ECS worker → tool-free Strands Sponsor Fit → Bedrock Nova produces a typed persisted advisory in `sponsor_fit_results`. The organizer follows `event.html?event={event_id}&tab=resources&offer={offer_id}` to Accept/Reject. Fit failure does not grant or remove human authority.
 
-Existing resource needs are JSON value objects. References are deterministic
-UUIDs scoped to the event and resource content (with an occurrence suffix for
-identical entries). Editing/removing a need invalidates its old reference;
-approval refuses to silently reattach an old offer to another need. All decisions
-lock the event, verify organizer authority and the offer version/status, and
-recheck the current remaining quantity in the same transaction. Privacy flags
-still control public sponsor/resource visibility.
+## Quantity and persistence
 
-`sponsor_fit_results` stores one versioned typed advisory per offer, with model,
-usage, message, correlation and causation provenance. Runtime replay cannot
-duplicate the assessment or create a contribution. An unavailable/failed fit
-does not grant or remove organizer authority.
+APPROVED offers are the contribution ledger; no second counter is incremented. PostgreSQL numeric quantities and Decimal calculations derive pledged/remaining values. Pending/rejected offers count zero. Approval locks the event, validates organizer, offer version/status and capacity transactionally. Rejection changes no contribution totals.
 
-## Runtime
+Need IDs are deterministic event-scoped references to setup value objects, including duplicate occurrences. Edited/removed needs cannot silently acquire old offers. Manual sponsors remain separate. Fingerprints reject conflicting replay; runtime replay cannot duplicate assessments or approve support.
 
-Submission atomically writes the offer, SPONSOR_OFFER notification and
-`support_offer.submitted` domain outbox event. Existing EventBridge source routing
-already forwards `hatcommways.runtime` events to SQS. The new production router
-handler uses the existing runtime registry, retries and worker instrumentation.
-One tool-free Strands agent calls `us.amazon.nova-2-lite-v1:0` with only scoped
-offer/event/need/approved-quantity/timing/profile data. It cannot mutate anything.
-Deterministic validation rejects unsupported positive timing/gap assertions.
+Required 1 and approved 1 yields pledged 1, remaining 0. Legitimate fractions remain fractional; display rounding cannot replace correct persistence. The investigated 0.992 offer matched its submission fingerprint: approval did not scale 1 down. A user-authorized correction retained fingerprint/reviewer information and logged before/after values. Wheel protection and decimal-text submission are input safeguards, not a new backend contract.
 
-## Release order
+## Dashboard and privacy
 
-Production API and worker deployment was verified on 14 September 2026; see
-[sponsor deployment report](sponsor-deployment-20260914.md). Vercel frontend
-redeployment is still required. The API startup applies
-the additive schema in `schema.sql`. Ship the schema and updated API/worker
-images before publishing the frontend feature; wait for old API tasks to drain
-before creating sponsor notifications. Old workers do not know this event type.
-No new EventBridge rule, queue, infrastructure, credentials or Google Maps change
-is required. Existing participation and blocker workflows retain their owners.
+`my-sponsorships.html` opens the current organization; `?sponsor={account_id}` opens another organization's public view for an authenticated user. Explore is unchanged.
 
-## Focused verification
+`GET /sponsors/{sponsor_id}` resolves an active organization and explicitly projects approved contributions on PUBLIC events with `show_sponsors=true`: event metadata, coordinates, available cover, support type and approval time. It omits private comments and pending/rejected details for others. Only the owner receives detailed `offers`. No separate profile schema, upload system, verified badge or financial totals are implied.
 
-Run `tests/planning_foundation/test_support_offers.py` only against an isolated
-PostgreSQL test database: it exercises authenticated submission, notifications,
-scoped fit persistence/replay, decisions, isolation and overfill rejection.
-Browser verification uses the real local API for submission, exact-offer bell
-routing, accept/reject and return to the normal tab. A separate real Nova call
-was verified through the production router using an isolated local database;
-the later production EventBridge/SQS proof is recorded in the deployment report.
+The map fits approved event coordinates. Highlights prefer recent approved contributions and need not match the map's ordering. Pending offers appear only in the private list. Missing Maps/images have fallbacks.
 
-Sponsor dashboards, maps, profiles, payments, contracts and analytics are deferred.
+Existing APIs: `GET/POST /events/{event_id}/support-offers`, `GET /events/{event_id}/support-notifications`, `POST /events/{event_id}/support-offers/{offer_id}/decision`.
 
-## Changed files
+## Evidence and limits
 
-- `apps/web/event.html`, `event-home.js`, `event-home.css`, `event-support.js`
-- `services/api/app.py`
-- `services/planning_foundation/schema.sql`, `support_offer_models.py`,
-  `support_offer_service.py`, `participation_service.py`
-- `services/agent_runtime/sponsor_fit.py`, `runtime_handlers.py`, `runtime_worker.py`
-- `tests/planning_foundation/test_support_offers.py`
-- `docs/sponsor-support.md`
+See [deployment](deployment.md) for dashboard release evidence and [earlier runtime proof](sponsor-deployment-20260914.md) for submission-to-model execution. Dashboard/maps are implemented; payments, contracts, delivery/completion lifecycle and richer profiles are not claimed.
 
-Focused results: two PostgreSQL/API tests passed (sponsor and participation);
-browser submission/notification/review/accept/reject checks passed without JS
-exceptions; real Nova returned STRONG with all three fit checks true for the
-Kokar transport example. The subsequent production deployment and live queue proof are recorded in the
-deployment report.
+Focused checks: `tests/planning_foundation/test_support_offers.py` (disposable database required) and `tests/test_sponsor_quantity_exact.py` (isolated rolled-back schema). No full regression is implied by this docs pass.

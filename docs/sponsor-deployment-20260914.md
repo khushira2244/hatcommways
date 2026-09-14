@@ -1,5 +1,7 @@
 # Sponsor production deployment — 14 September 2026
 
+> Historical release snapshot. See [deployment](deployment.md) for the later sponsor-dashboard API release and frontend status. Pending-deployment statements below describe the time of this earlier test.
+
 - Image: `446103799369.dkr.ecr.us-east-1.amazonaws.com/hatcommways:sponsor-20260914-014749`
 - Deployed digest: `sha256:70fab57f4311cd0a20c2882ac140b266c392246e534709e6e16114433595924d`
 - API task: `hatcommways-api:4`

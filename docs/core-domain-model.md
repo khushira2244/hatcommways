@@ -1,5 +1,7 @@
 # Hatcommways — Core Domain Model
 
+> Design/planning reference, not a deployed feature inventory. For current behavior and boundaries, see the [implementation documentation index](README.md). Broader capabilities below remain proposals unless confirmed there.
+
 ## 1. Purpose
 
 This document defines the core domain objects of Hatcommways and the relationships between them.

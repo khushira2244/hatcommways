@@ -1,5 +1,7 @@
 Yes bro — tomorrow should be one coherent **Execution + Replanning day**.
 
+> Design/planning reference, not a deployed feature inventory. For current behavior and boundaries, see the [implementation documentation index](README.md). Broader capabilities below remain proposals unless confirmed there.
+
 ### Tomorrow plan — 12 Codex prompts
 
 ```text

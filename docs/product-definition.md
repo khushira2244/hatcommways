@@ -1,5 +1,7 @@
 # Hatcommways — Product Definition
 
+> Design/planning reference, not a deployed feature inventory. For current behavior and boundaries, see the [implementation documentation index](README.md). Broader capabilities below remain proposals unless confirmed there.
+
 ## 1. Product Summary
 
 Hatcommways is an AI-powered community execution platform.
