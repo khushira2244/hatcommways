@@ -58,3 +58,14 @@
   .landing-section h2 { font-size: clamp(1.8rem, 7.5vw, 2.4rem); }
   .landing-signoff { letter-spacing: .12em; }
 }
+
+/* Five keyboard-accessible workflow selectors, with one detail card in front. */
+.landing-steps > li { display: flex; min-width: 0; }
+.landing-steps > li:last-child { grid-column: 1 / -1; }
+button.landing-step { width: 100%; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.landing-step-title { display: block; font-family: var(--font-display); font-size: .96rem; font-weight: 700; line-height: 1.4; letter-spacing: -.025em; }
+button.landing-step:hover { border-color: var(--green); }
+button.landing-step:focus-visible { outline: 3px solid var(--green); outline-offset: 4px; }
+.landing-workflow-card[hidden] { display: none; }
+.landing-workflow-card { min-height: 430px; }
+@media (max-width:620px) { .landing-workflow-card { min-height: 0; } }

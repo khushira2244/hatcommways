@@ -121,21 +121,25 @@
               <h2 id="how-title">From community goal<br><em>to coordinated action.</em></h2>
               <p class="landing-intro">Hatcommways turns community goals into structured stages, roles, support needs, execution updates, and approved changes — so everyone can move from ideas to real impact, together.</p>
               <ol class="landing-steps">
-<li class="landing-step"><span class="landing-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5h14v16H5z M8 3v4 M16 3v4 M5 10h14 M8 14h2 M14 14h2 M8 17h2"/></svg></span><div><span class="landing-step-label">Step 01</span><h3>Discover or create an event</h3></div></li>
-<li class="landing-step"><span class="landing-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M18 4a4 4 0 0 1 0 8 M22 21v-2a4 4 0 0 0-3-4"/></svg></span><div><span class="landing-step-label">Step 02</span><h3>Define stages and roles</h3></div></li>
-<li class="landing-step"><span class="landing-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12 M15 12a3 3 0 1 0-6 0 3 3 0 0 0 6 0"/></svg></span><div><span class="landing-step-label">Step 03</span><h3>Join, watch, or support</h3></div></li>
-<li class="landing-step is-highlighted"><span class="landing-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3 M12 18v3 M3 12h3 M18 12h3 M5.6 5.6l2.1 2.1 M16.3 16.3l2.1 2.1 M5.6 18.4l2.1-2.1 M16.3 7.7l2.1-2.1 M17 12a5 5 0 1 0-10 0 5 5 0 0 0 10 0"/></svg></span><div><span class="landing-step-label">Step 04</span><h3>Coordinate and execute</h3></div></li>
-<li class="landing-step"><span class="landing-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20v-6h3v6z M10 20V9h3v11z M16 20V3h3v17z"/></svg></span><div><span class="landing-step-label">Step 05</span><h3>Approve changes and learn</h3></div></li>
+<li><button type="button" class="landing-step" id="workflow-step-1" aria-controls="workflow-card-1" aria-pressed="false"><span class="landing-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5h14v16H5z M8 3v4 M16 3v4 M5 10h14 M8 14h2 M14 14h2 M8 17h2"/></svg></span><span><span class="landing-step-label">Step 01</span><span class="landing-step-title">Discover or create an event</span></span></button></li>
+<li><button type="button" class="landing-step" id="workflow-step-2" aria-controls="workflow-card-2" aria-pressed="false"><span class="landing-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M18 4a4 4 0 0 1 0 8 M22 21v-2a4 4 0 0 0-3-4"/></svg></span><span><span class="landing-step-label">Step 02</span><span class="landing-step-title">Define stages and roles</span></span></button></li>
+<li><button type="button" class="landing-step" id="workflow-step-3" aria-controls="workflow-card-3" aria-pressed="false"><span class="landing-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12 M15 12a3 3 0 1 0-6 0 3 3 0 0 0 6 0"/></svg></span><span><span class="landing-step-label">Step 03</span><span class="landing-step-title">Join, watch, or support</span></span></button></li>
+<li><button type="button" class="landing-step is-highlighted" id="workflow-step-4" aria-controls="workflow-card-4" aria-pressed="true"><span class="landing-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3 M12 18v3 M3 12h3 M18 12h3 M5.6 5.6l2.1 2.1 M16.3 16.3l2.1 2.1 M5.6 18.4l2.1-2.1 M16.3 7.7l2.1-2.1 M17 12a5 5 0 1 0-10 0 5 5 0 0 0 10 0"/></svg></span><span><span class="landing-step-label">Step 04</span><span class="landing-step-title">Coordinate and execute</span></span></button></li>
+<li><button type="button" class="landing-step" id="workflow-step-5" aria-controls="workflow-card-5" aria-pressed="false"><span class="landing-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20v-6h3v6z M10 20V9h3v11z M16 20V3h3v17z"/></svg></span><span><span class="landing-step-label">Step 05</span><span class="landing-step-title">Approve changes and learn</span></span></button></li>
               </ol>
             </div>
             <div class="landing-workflow-stack">
-              <article class="landing-workflow-card">
+<article class="landing-workflow-card" id="workflow-card-1" role="region" aria-labelledby="workflow-step-1" hidden><span class="landing-pill">Step 01</span><h3>Discover or create an event</h3><p>Find a community event or start with a goal of your own. Bring the purpose, place, and people together in one event.</p></article>
+<article class="landing-workflow-card" id="workflow-card-2" role="region" aria-labelledby="workflow-step-2" hidden><span class="landing-pill">Step 02</span><h3>Define stages and roles</h3><p>Break the goal into stages and work items. Define the roles and responsibilities needed to turn the plan into action.</p></article>
+<article class="landing-workflow-card" id="workflow-card-3" role="region" aria-labelledby="workflow-step-3" hidden><span class="landing-pill">Step 03</span><h3>Join, watch, or support</h3><p>Take part in meaningful work or offer resources and support. Organizers review participation and sponsor offers in the context of the event.</p></article>
+              <article class="landing-workflow-card" id="workflow-card-4" role="region" aria-labelledby="workflow-step-4">
                 <span class="landing-pill">Step 04</span>
                 <h3>Coordinate and execute</h3>
                 <p>Keep everyone aligned as the work happens. Members share updates, track progress, and request changes — all in one place, with transparency and accountability.</p>
                 <div class="landing-badges"><span>✓ Updates reviewed</span><span>✓ Organizer approved</span></div>
                 <div class="landing-example"><span class="landing-step-label">Example activity</span><p><strong>Alex M.</strong> posted an update</p><p>Community garden setup is 80% complete.<br>Need 3 more volunteers for this weekend.</p></div>
               </article>
+<article class="landing-workflow-card" id="workflow-card-5" role="region" aria-labelledby="workflow-step-5" hidden><span class="landing-pill">Step 05</span><h3>Approve changes and learn</h3><p>Review proposed changes before they become part of the plan. Keep important decisions with the organizer and use progress and updates to guide what comes next.</p></article>
             </div>
           </section>
           <section class="landing-section landing-split" id="features" aria-labelledby="features-title">
@@ -165,5 +169,6 @@
         </div>
       </main>
     </div>
+    <script src="./landing.js" defer></script>
   </body>
 </html>
