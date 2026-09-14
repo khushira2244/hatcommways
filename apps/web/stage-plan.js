@@ -4,8 +4,40 @@ const clone=value=>JSON.parse(JSON.stringify(value));
 const localDate=value=>{const d=new Date(value);return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16)};
 const iso=value=>new Date(value).toISOString();
 const escapeHtml=value=>String(value).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-async function initialize(){if(!getToken()||!eventId){location.replace('./signin.html');return}try{const account=await api('/auth/me');document.querySelector('#workspace-name').textContent=account.display_name;document.querySelector('#workspace-type').textContent=account.account_type==='ORGANIZATION'?'Organization':'Individual';document.querySelector('#workspace-avatar').textContent=account.display_name.charAt(0).toUpperCase();await loadWorkspace()}catch(error){root.hidden=false;showError(error)}}
-async function loadWorkspace(){workspace=await api(`/events/${eventId}/stage-plan-workspace`);renderFacts();if(workspace.mode==='CONFIRMED')loadConfirmed();else if(workspace.mode==='PROPOSAL')loadProposal();else renderRequestState();root.hidden=false}
+// Bound only Stage Plan requests; an interrupted response never implies rollback.
+let confirming=false;
+async function stageRequest(path, options={}) {
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),20000);
+  try { return await api(path,{...options,cache:'no-store',signal:controller.signal}); }
+  finally { clearTimeout(timer); }
+}
+async function initialize(){
+  if(!getToken()||!eventId){location.replace('./signin.html');return}
+  root.hidden=false;
+  document.querySelector('#workspace-status').textContent='Loading saved plan…';
+  document.querySelector('#confirm-stages').disabled=true;
+  // Account decoration must not gate the independently authorized workspace GET.
+  stageRequest('/auth/me').then(account=>{
+    if(!account?.display_name)return;
+    document.querySelector('#workspace-name').textContent=account.display_name;
+    document.querySelector('#workspace-type').textContent=account.account_type==='ORGANIZATION'?'Organization':'Individual';
+    document.querySelector('#workspace-avatar').textContent=account.display_name.charAt(0).toUpperCase();
+  }).catch(()=>{});
+  try{await loadWorkspace()}catch(error){showError(new Error('Saved Stage Plan could not be loaded. Please refresh to try again.'))}
+}
+async function loadWorkspace({preserveEdits=false}={}){
+  const saved=await stageRequest(`/events/${eventId}/stage-plan-workspace`);
+  if(!saved?.event||!Array.isArray(saved.stages)||!['CONFIRMED','PROPOSAL','RUNNING','FAILED','EMPTY'].includes(saved.mode))throw new Error('Saved Stage Plan response could not be verified.');
+  const keep=preserveEdits&&saved.mode==='PROPOSAL'&&saved.proposal?.id===workspace?.proposal?.id;
+  workspace=saved;
+  renderFacts();
+  if(workspace.mode==='CONFIRMED')loadConfirmed();
+  else if(workspace.mode==='PROPOSAL'){if(!keep)loadProposal()}
+  else renderRequestState();
+  document.querySelector('#confirm-stages').disabled=confirming||workspace.mode!=='PROPOSAL';
+  root.hidden=false;
+}
 function showPlanChrome(){document.querySelector('.timeline-card').hidden=false;document.querySelector('#stage-editor').closest('section').hidden=false;document.querySelector('.feedback-card').hidden=false;document.querySelector('#reset-plan').hidden=false;document.querySelector('#confirm-stages').hidden=false;document.querySelector('#generate-stage-plan')?.remove()}
 function renderRequestState(){const running=workspace.mode==='RUNNING';document.querySelector('.timeline-card').hidden=true;document.querySelector('#stage-editor').closest('section').hidden=true;document.querySelector('.feedback-card').hidden=true;document.querySelector('#reset-plan').hidden=true;document.querySelector('#confirm-stages').hidden=true;document.querySelector('#workspace-title').textContent=running?'Generating Stage Plan':'Plan Your Event Stages';document.querySelector('#workspace-subtitle').textContent=running?'The planning agent is preparing a proposal. You may safely leave and return to this page.':'Generate a proposed stage plan when you are ready.';document.querySelector('#workspace-status').textContent=running?(workspace.planning_request?.status||'Running'):(workspace.mode==='FAILED'?'Previous request failed':'Not requested');const actions=document.querySelector('#workspace-message').closest('section');let button=document.querySelector('#generate-stage-plan');if(!button){button=document.createElement('button');button.id='generate-stage-plan';button.className='confirm-button';button.textContent=workspace.mode==='FAILED'?'Try Again':'Generate Stage Plan';actions.insertBefore(button,document.querySelector('#reset-plan'));button.onclick=requestStagePlan}button.hidden=running;document.querySelector('#workspace-message').textContent=workspace.mode==='FAILED'?'The previous planning request failed. You can explicitly try again.':running?'Stage Plan request is running…':'No Stage Plan has been requested yet.';if(running)setTimeout(pollWorkspace,2000)}
 async function pollWorkspace(){try{await loadWorkspace()}catch(error){showError(error)}}
@@ -28,7 +60,34 @@ document.querySelector('#add-stage').onclick=()=>{const ref=`manual-${crypto.ran
 document.querySelector('#delete-stage').onclick=()=>{if(localStages.length===1)return showError(new Error('A stage plan requires at least one stage.'));localStages=localStages.filter(s=>s.temporary_stage_ref!==selectedRef);localStages.forEach(s=>s.dependencies=s.dependencies.filter(d=>d!==selectedRef));selectedRef=localStages[0].temporary_stage_ref;render()};
 document.querySelector('#reset-plan').onclick=()=>{localStages=clone(original.proposed_stages);selectedRef=localStages[0]?.temporary_stage_ref;render()};
 document.querySelector('#fit-view').onclick=()=>document.querySelector('.timeline-scroll').scrollTo({left:0,behavior:'smooth'});
-document.querySelector('#confirm-stages').onclick=async()=>{const button=document.querySelector('#confirm-stages');button.disabled=true;try{const edited={...clone(original),proposed_stages:localStages.map((s,i)=>({...s,proposed_order:i+1}))};await api(`/stage-proposals/${workspace.proposal.id}/decision`,{method:'POST',body:JSON.stringify({decision:'APPROVE',decision_idempotency_key:`stage-approval:${workspace.proposal.id}`,edited_payload:edited})});location.reload()}catch(error){showError(error);button.disabled=false}};
+async function confirmStages(){
+  if(confirming||workspace?.mode!=='PROPOSAL')return;
+  const button=document.querySelector('#confirm-stages');
+  confirming=true;button.disabled=true;
+  const message=document.querySelector('#workspace-message');
+  message.textContent='Confirming saved Stage Plan…';
+  let failure;
+  try{
+    const edited={...clone(original),proposed_stages:localStages.map((s,i)=>({...s,proposed_order:i+1}))};
+    const body={decision:'APPROVE',decision_idempotency_key:`stage-approval:${workspace.proposal.id}`};
+    // Unchanged confirmation uses the stored, validated proposal on the server.
+    if(JSON.stringify(edited)!==JSON.stringify(original))body.edited_payload=edited;
+    const result=await stageRequest(`/stage-proposals/${workspace.proposal.id}/decision`,{method:'POST',body:JSON.stringify(body)});
+    if(result?.status!=='APPROVED')throw new Error('Confirmation status could not be verified.');
+  }catch(error){failure=error}
+  message.textContent='Confirmation status could not be verified. Checking saved plan…';
+  try{
+    await loadWorkspace({preserveEdits:true});
+    if(workspace.mode==='CONFIRMED')message.textContent='Stage Plan confirmed.';
+    else if(failure?.status===422)showError(failure);
+    else message.textContent='Confirmation is not yet recorded. Your saved proposal is retained. You can retry confirmation safely.';
+  }catch(error){
+    message.textContent='Confirmation status could not be verified. Your plan is retained. Refresh to check the saved plan, or retry confirmation safely.';
+  }finally{
+    confirming=false;button.disabled=workspace?.mode!=='PROPOSAL';
+  }
+}
+document.querySelector('#confirm-stages').onclick=confirmStages;
 function showError(error){const host=document.querySelector('#workspace-message');if(host)host.textContent=error.message;else document.body.textContent=error.message}
 initialize();
 installSaveExit(eventId, 'STAGE_PLANNING');
