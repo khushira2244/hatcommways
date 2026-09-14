@@ -128,6 +128,11 @@ async function initializeApp() {
   if (!getToken()) { window.location.replace("./signin.html"); return; }
   try {
     const account = await api("/auth/me");
+    if (account.account_type === 'ORGANIZATION') {
+      document.querySelector('.app-nav').innerHTML = '<a class="is-active" href="./app.html">Explore</a><a href="./my-sponsorships.html">My Sponsorships</a>';
+      const menuLink = document.querySelector('#account-panel a');
+      menuLink.href = './my-sponsorships.html'; menuLink.textContent = 'My Sponsorships';
+    }
     const accountLabel = account.account_type === "ORGANIZATION" ? "Organization" : "Individual";
     const initial = account.display_name.trim().charAt(0).toUpperCase();
     document.querySelector("#account-trigger-name").textContent = account.display_name;
@@ -194,7 +199,7 @@ async function initializeDiscovery() {
   document.querySelector('.action-card--join')?.addEventListener('click',event=>{event.preventDefault();document.querySelector('#discovery').scrollIntoView({behavior:'smooth',block:'start'});document.querySelector('#event-search').focus({preventScroll:true})});
   try {
     const rows = await api('/events/discover');
-    discoveryEvents = rows.map(item => ({...item,category:normalizeDiscoveryCategory(item.category),status:new Date(item.starts_at)>new Date()?'Upcoming':'Open',date:new Date(item.starts_at).toLocaleString([],{dateStyle:'medium',timeStyle:'short'}),location:item.location_description,people:item.participant_count}));
+    discoveryEvents = rows.map(item => ({...item,name:cleanRanchiEventName(item.name),category:normalizeDiscoveryCategory(item.category),status:new Date(item.starts_at)>new Date()?'Upcoming':'Open',date:new Date(item.starts_at).toLocaleString([],{dateStyle:'medium',timeStyle:'short'}),location:cleanRanchiLocation(item.name,item.location_description),people:item.participant_count}));
     renderMarkers();
     await initializeDiscoveryMap();
   } catch (error) {
@@ -315,4 +320,14 @@ if (appContent) {
     try { await api("/auth/signout", { method: "POST" }); } finally { clearToken(); window.location.replace("./index.html"); }
   });
   initializeApp();
+}
+
+// Only the four seeded Ranchi titles have legacy demo suffixes removed.
+function cleanRanchiEventName(value) {
+  return String(value || '').replace(/^(Community Lake Cleanup — Kokar|Neighborhood Tree Plantation Drive — Morabadi|Community Health & Awareness Camp — Lalpur|Local Cultural & Community Festival — Harmu)\s*(?:\(Demo\)|[—-] Demo)$/i, '$1');
+}
+
+function cleanRanchiLocation(eventName, location) {
+  const known = /^(Community Lake Cleanup — Kokar|Neighborhood Tree Plantation Drive — Morabadi|Community Health & Awareness Camp — Lalpur|Local Cultural & Community Festival — Harmu)$/i.test(cleanRanchiEventName(eventName));
+  return known ? String(location || '').replace(/\s*\(approximate demo area\)$/i, '') : location;
 }

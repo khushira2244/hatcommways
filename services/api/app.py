@@ -332,6 +332,10 @@ def create_app(
             raise InvalidSessionError("authentication required")
         return credentials.credentials, auth.authenticate(credentials.credentials)
 
+    @app.get("/sponsors/{sponsor_id}")
+    def sponsor_dashboard(sponsor_id: UUID, session: AuthenticatedSession = Depends(authenticated)):
+        return support_offers.sponsor_dashboard(sponsor_id, session.account.id)
+
     @app.get("/events/{event_id}/support-offers")
     def support_workspace(event_id: UUID, session: AuthenticatedSession = Depends(authenticated)):
         return support_offers.workspace(event_id, session.account.id)

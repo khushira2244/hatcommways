@@ -151,3 +151,25 @@ class SupportOfferService:
                 raise NotFoundError("Offer outside runtime scope")
             c.execute("INSERT INTO sponsor_fit_results(offer_id,result,provenance) VALUES(%s,%s,%s) ON CONFLICT(offer_id) DO NOTHING", (offer_id,Jsonb(result.model_dump()),Jsonb(provenance)))
         return self.existing_fit(event_id,offer_id)
+
+    def sponsor_dashboard(self, sponsor_id, viewer_id):
+        """Explicit public projection; private offers are queried only for their owner."""
+        with self.database.connect() as c:
+            sponsor = c.execute("SELECT id,display_name,account_type FROM accounts WHERE id=%s AND status='ACTIVE' AND account_type='ORGANIZATION'", (sponsor_id,)).fetchone()
+            if not sponsor:
+                raise NotFoundError("Sponsor organization not found")
+            public = c.execute("""SELECT e.id AS event_id,e.name,e.category,e.location_description,
+                e.starts_at,s.event_latitude AS latitude,s.event_longitude AS longitude,
+                s.cover_image_data_url AS image,o.support_type,o.reviewed_at
+                FROM support_offers o JOIN events e ON e.id=o.event_id
+                JOIN event_setups s ON s.event_id=e.id
+                WHERE o.sponsor_account_id=%s AND o.status='APPROVED'
+                AND s.event_visibility='PUBLIC' AND s.show_sponsors=true
+                ORDER BY o.reviewed_at DESC,o.id""", (sponsor_id,)).fetchall()
+            result = {'sponsor':sponsor,'is_owner':sponsor_id==viewer_id,'contributions':public}
+            if sponsor_id==viewer_id:
+                result['offers'] = c.execute("""SELECT o.id,o.event_id,e.name,e.location_description,
+                    o.support_type,o.comment,o.quantity,o.status,o.created_at,o.updated_at
+                    FROM support_offers o JOIN events e ON e.id=o.event_id
+                    WHERE o.sponsor_account_id=%s ORDER BY o.updated_at DESC,o.id""", (sponsor_id,)).fetchall()
+            return result
