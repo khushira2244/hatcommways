@@ -22,3 +22,6 @@
 .support-decisions {display:flex;gap:12px;margin-top:18px}
 #tab-resources dd {margin:4px 0 16px;white-space:pre-wrap;overflow-wrap:anywhere}
 #tab-resources [role=status] {color:#086348}
+
+/* Organizer-only gallery action, clear of video playback controls. */
+.gallery-media .gallery-remove{position:absolute;top:10px;right:10px;z-index:2;padding:7px 12px;border:1px solid #dce6df;border-radius:7px;background:#fff;color:#a52a2a;font:inherit;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px #0002}.gallery-media .gallery-remove:disabled{opacity:.6;cursor:wait}.gallery-media .gallery-remove:focus-visible{outline:2px solid #168560;outline-offset:3px}
