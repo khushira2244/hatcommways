@@ -109,7 +109,7 @@ Tests under `tests/planning_foundation/` clear their configured database: **use 
 
 ## Demo and Evidence
 
-[Watch the demo video on Vimeo](https://vimeo.com/1226772984).
+[Watch the demo video on Vimeo](https://vimeo.com/1226786632).
 
 Follow [the demo](docs/demo.md). Show persisted proposals and human decisions rather than forcing a replan. [Observability](docs/observability.md) explains message, correlation, run and trace IDs. The [dated sponsor deployment record](docs/sponsor-deployment-20260914.md) preserves earlier queue-to-model evidence.
 
