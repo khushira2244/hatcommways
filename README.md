@@ -2,6 +2,12 @@
 
 > From “someone should” to “we did.”
 
+<img width="949" height="476" alt="Screenshot 2026-09-15 051449" src="https://github.com/user-attachments/assets/b4f51787-0170-40ac-83b6-10e1294e0b5c" />
+<img width="941" height="472" alt="Screenshot 2026-09-15 051424" src="https://github.com/user-attachments/assets/316228b0-4438-4b6c-9d0c-de8af7321113" />
+
+Community action becomes visible. The Explore map helps people discover nearby events, understand their themes and locations, and find where they can participate.
+
+
 Hatcommways is an AI-powered community execution platform. It turns real-world goals into a work graph, timeline, and project-specific responsibilities. People, communities, organizations, and sponsors choose how they contribute; bounded agents help reason about dependencies, resources, blockers, and changes. People retain authority over commitments and consequential decisions.
 
 **Implemented and deployed:** [Web app](https://hatcommways.vercel.app) · [API health](https://d2zg0c0ne74fcr.cloudfront.net/health) · [Demo](docs/demo.md) · [Documentation index](docs/README.md)
@@ -14,6 +20,9 @@ The current system preserves event-specific plans, reports, assessments and deci
 
 ## What Hatcommways Does
 
+<img width="945" height="471" alt="Screenshot 2026-09-15 051510" src="https://github.com/user-attachments/assets/b1338364-8cfb-4f11-8738-1bdca615e3e4" />
+
+
 | Role | Implemented journey |
 | --- | --- |
 | Organizers | Create goals/events, configure governance, generate and review stages/work/actor requirements, configure resources, review participation and sponsor offers, monitor execution, interpret updates, assess blockers, coordinate affected work, and approve/reject selective replanning. |
@@ -24,6 +33,9 @@ The current system preserves event-specific plans, reports, assessments and deci
 Explore remains shared discovery. My Sponsorships is not a replacement for Explore.
 
 ## What Makes It Different
+
+<img width="947" height="474" alt="image" src="https://github.com/user-attachments/assets/2fd7be8e-1ea3-4b80-836b-81b3b4368e68" />
+
 
 Discovery, registration and communication help people get started. Community execution also needs work design and a response to changing conditions. Hatcommways connects:
 
